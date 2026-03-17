@@ -1,5 +1,5 @@
 import { PANEL_ID } from './constants.js';
-import { getDB, getEntry, normalizeEntry, saveDB, upsert, removeEntry } from './db.js';
+import { getDB, getEntry, normalizeEntry, saveDB, upsert, removeEntry, beginBatch, endBatch } from './db.js';
 import { extractThreadId } from './utils.js';
 import { createButton, applyVisualToHost, setProgressState } from './ui-helpers.js';
 import { extractListThumb, fetchThumbForTid } from './thumbnail.js';
@@ -73,6 +73,7 @@ function ensureActionsForThread(host, thread, visualContainer, iconOnly = false,
   wrap.appendChild(createButton(iconOnly ? '⭐' : '⭐ 待看', statusAction('todo'), false, iconOnly, '待看'));
   wrap.appendChild(createButton(iconOnly ? '👁' : '👁 已看', statusAction('seen'), false, iconOnly, '已看'));
   wrap.appendChild(createButton(iconOnly ? '⬇' : '⬇ 已下載', statusAction('downloaded'), false, iconOnly, '已下載'));
+  wrap.appendChild(createButton(iconOnly ? '🚫' : '🚫 略過', statusAction('skipped'), false, iconOnly, '略過'));
 
   wrap.appendChild(createButton(iconOnly ? '📝' : '📝 備註', () => {
     toggleInlineNote(host, thread);
@@ -108,19 +109,77 @@ function ensureActionsForThread(host, thread, visualContainer, iconOnly = false,
   host.appendChild(wrap);
 }
 
-export function scanListPage() {
+function collectPageThreads() {
+  const threads = [];
   document.querySelectorAll('tbody[id^="normalthread_"]').forEach(tb => {
     const a = tb.querySelector('a.s.xst, a.xst');
     if (!a) return;
     const threadId = extractThreadId(a.href) || tb.id.replace(/^\D+_/, '');
     if (!threadId) return;
-    const host = a.parentElement || tb;
-    const thread = {
+    threads.push({
       threadId,
       title: a.textContent.trim(),
       url: a.href,
       thumb: extractListThumb(tb),
-    };
+      host: a.parentElement || tb,
+      tb,
+    });
+  });
+  return threads;
+}
+
+function ensureSkipAllButton(threads) {
+  if (document.querySelector('.kuro-skip-all-wrap')) return;
+
+  const pagers = document.querySelectorAll('.pg, .pgt, #fd_page_bottom');
+  let anchor = pagers[pagers.length - 1];
+  if (!anchor) {
+    const threadList = document.getElementById('threadlisttableid') || document.querySelector('#moderate');
+    if (threadList) anchor = threadList;
+    else return;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'kuro-skip-all-wrap';
+  wrap.style.cssText = 'display:flex;justify-content:flex-end;padding:8px 0;gap:8px';
+
+  const btn = createButton('🚫 略過本頁未分類', () => {
+    const untracked = threads.filter(t => !getEntry(t.threadId));
+    if (!untracked.length) {
+      showToast('本頁所有文章都已分類', 'info');
+      return;
+    }
+    const skippedIds = untracked.map(t => t.threadId);
+    beginBatch();
+    untracked.forEach(t => {
+      upsert(t.threadId, {
+        title: t.title,
+        url: t.url,
+        thumb: t.thumb,
+        note: '',
+        status: 'skipped',
+      });
+    });
+    endBatch();
+    showToast(`已將 ${untracked.length} 篇未分類文章設為略過`, 'success', 5000, {
+      label: '復原',
+      onClick: () => {
+        beginBatch();
+        skippedIds.forEach(id => removeEntry(id));
+        endBatch();
+      },
+    });
+  });
+
+  wrap.appendChild(btn);
+  anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
+}
+
+export function scanListPage() {
+  const threads = collectPageThreads();
+
+  threads.forEach(({ threadId, title, url, thumb, host, tb }) => {
+    const thread = { threadId, title, url, thumb };
 
     const old = getEntry(threadId);
     if (old && thread.thumb && !old.thumb) {
@@ -132,6 +191,10 @@ export function scanListPage() {
     ensureActionsForThread(host, thread, tb, true);
     applyVisualToHost(host, threadId);
   });
+
+  if (threads.length > 0) {
+    ensureSkipAllButton(threads);
+  }
 }
 
 export function scanSearchPage() {
@@ -188,4 +251,12 @@ export function scanThreadPage() {
   const host = titleEl.parentElement || titleEl;
   ensureActionsForThread(host, thread, null, false, true);
   applyVisualToHost(host, threadId);
+
+  // Keyboard shortcut hint (#8)
+  if (!host.querySelector('.kuro-kbd-bar')) {
+    const hint = document.createElement('div');
+    hint.className = 'kuro-kbd-bar';
+    hint.innerHTML = '快捷鍵：<kbd>1</kbd> 待看　<kbd>2</kbd> 已看　<kbd>3</kbd> 已下載　<kbd>4</kbd> 略過　<kbd>0</kbd> 清除';
+    host.appendChild(hint);
+  }
 }

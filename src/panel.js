@@ -1,6 +1,6 @@
 import { PANEL_ID, TOGGLE_ID, VALID_STATUSES } from './constants.js';
 import { statusLabel, statusColor } from './constants.js';
-import { getDB, setDB, saveDB, getEntry, normalizeEntry, upsert, removeEntry, loadUIState, saveUIState, deleteGMValue } from './db.js';
+import { getDB, setDB, saveDB, getEntry, normalizeEntry, upsert, removeEntry, loadUIState, saveUIState, deleteGMValue, beginBatch, endBatch } from './db.js';
 import { formatTime, isoDateOnly } from './utils.js';
 import { createButton, makePlaceholderThumb } from './ui-helpers.js';
 import { fetchMissingThumbsFromCurrentPage, fetchAllMissingThumbs } from './thumbnail.js';
@@ -28,7 +28,7 @@ function persistUIState() {
   saveUIState({
     sortMode: panel.querySelector('.kuro-sort')?.value || 'manual',
     sortDir: panel.querySelector('.kuro-sort-dir')?.value || 'desc',
-    filter: panel.querySelector('.kuro-filter')?.value || '',
+    filter: panel.querySelector('.kuro-pill.active')?.dataset.filter || '',
     wideMode: panel.classList.contains('max'),
     expanded: Object.keys(panelState.expanded).filter(k => panelState.expanded[k]),
   });
@@ -45,9 +45,11 @@ function restoreUIState(panel) {
     const el = panel.querySelector('.kuro-sort-dir');
     if (el) el.value = state.sortDir;
   }
-  if (state.filter) {
-    const el = panel.querySelector('.kuro-filter');
-    if (el) el.value = state.filter;
+  if (state.filter !== undefined) {
+    const pills = panel.querySelectorAll('.kuro-pill');
+    pills.forEach(p => {
+      p.classList.toggle('active', p.dataset.filter === (state.filter || ''));
+    });
   }
   if (state.wideMode) panel.classList.add('max');
   if (Array.isArray(state.expanded)) {
@@ -183,16 +185,38 @@ function showImportPreview(file, refreshUI) {
   });
 }
 
+export function updateToggleCount() {
+  const toggle = document.getElementById(TOGGLE_ID);
+  if (!toggle) return;
+  const db = getDB();
+  const count = Object.values(db).filter(item =>
+    (item.status && VALID_STATUSES.includes(item.status)) || (item.note && String(item.note).trim())
+  ).length;
+  let countEl = toggle.querySelector('.kuro-toggle-count');
+  if (count > 0) {
+    if (!countEl) {
+      countEl = document.createElement('span');
+      countEl.className = 'kuro-toggle-count';
+      toggle.appendChild(countEl);
+    }
+    countEl.textContent = count;
+  } else if (countEl) {
+    countEl.remove();
+  }
+}
+
 export function ensurePanel(refreshUI) {
   if (!document.getElementById(TOGGLE_ID)) {
     const toggle = document.createElement('button');
     toggle.id = TOGGLE_ID;
     toggle.type = 'button';
-    toggle.textContent = '📚 我的清單';
+    toggle.innerHTML = '📚 我的清單';
     toggle.addEventListener('click', () => {
       const panel = document.getElementById(PANEL_ID);
       if (panel) {
+        const wasHidden = !panel.classList.contains('show');
         panel.classList.toggle('show');
+        if (wasHidden) renderPanel();
         persistUIState();
       }
     });
@@ -213,13 +237,8 @@ export function ensurePanel(refreshUI) {
       <div class="body">
         <div class="kuro-toolbar">
           <input type="text" placeholder="搜尋標題/備註" class="kuro-search">
-          <select class="kuro-filter">
-            <option value="">全部</option>
-            <option value="todo">待看</option>
-            <option value="seen">已看</option>
-            <option value="downloaded">已下載</option>
-          </select>
         </div>
+        <div class="kuro-filter-pills"></div>
         <div class="kuro-toolbar-secondary">
           <select class="kuro-sort">
             <option value="manual" selected>自訂排序</option>
@@ -232,8 +251,8 @@ export function ensurePanel(refreshUI) {
             <option value="desc">↓ 倒序</option>
             <option value="asc">↑ 正序</option>
           </select>
-          <div class="kuro-mini kuro-summary-bar"></div>
         </div>
+        <div class="kuro-summary-bar"></div>
         <details class="kuro-advanced-filters">
           <summary>進階篩選</summary>
           <div class="kuro-filter-grid">
@@ -248,6 +267,7 @@ export function ensurePanel(refreshUI) {
           <button type="button" class="kuro-btn kuro-batch-todo">⭐ 待看</button>
           <button type="button" class="kuro-btn kuro-batch-seen">👁 已看</button>
           <button type="button" class="kuro-btn kuro-batch-downloaded">⬇ 已下載</button>
+          <button type="button" class="kuro-btn kuro-batch-skipped">🚫 略過</button>
           <button type="button" class="kuro-btn kuro-batch-delete">❌ 刪除</button>
           <button type="button" class="kuro-btn kuro-batch-clear">取消選取</button>
         </div>
@@ -270,6 +290,37 @@ export function ensurePanel(refreshUI) {
     `;
     document.body.appendChild(panel);
 
+    // Create filter pills
+    const pillsContainer = panel.querySelector('.kuro-filter-pills');
+    const filters = [
+      { value: '', label: '全部' },
+      { value: 'todo', label: '⭐ 待看' },
+      { value: 'seen', label: '👁 已看' },
+      { value: 'downloaded', label: '⬇ 已下載' },
+      { value: 'skipped', label: '🚫 略過' },
+    ];
+    filters.forEach(f => {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'kuro-pill' + (f.value === '' ? ' active' : '');
+      pill.dataset.filter = f.value;
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = f.label;
+      const countSpan = document.createElement('span');
+      countSpan.className = 'kuro-pill-count';
+      countSpan.textContent = '0';
+      pill.appendChild(labelSpan);
+      pill.appendChild(countSpan);
+      pill.addEventListener('click', () => {
+        pillsContainer.querySelectorAll('.kuro-pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        panel.dataset.page = '1';
+        persistUIState();
+        renderPanel();
+      });
+      pillsContainer.appendChild(pill);
+    });
+
     restoreUIState(panel);
 
     panel.dataset.page = '1';
@@ -280,8 +331,11 @@ export function ensurePanel(refreshUI) {
     panel.querySelector('.kuro-close-btn').addEventListener('click', () => {
       panel.classList.remove('show');
     });
-    panel.querySelector('.kuro-search').addEventListener('input', () => { panel.dataset.page = '1'; renderPanel(); });
-    panel.querySelector('.kuro-filter').addEventListener('change', () => { panel.dataset.page = '1'; persistUIState(); renderPanel(); });
+    let searchTimer = null;
+    panel.querySelector('.kuro-search').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => { panel.dataset.page = '1'; renderPanel(); }, 150);
+    });
     panel.querySelector('.kuro-sort').addEventListener('change', () => { panel.dataset.page = '1'; persistUIState(); renderPanel(); });
     panel.querySelector('.kuro-sort-dir').addEventListener('change', () => { panel.dataset.page = '1'; persistUIState(); renderPanel(); });
     panel.querySelector('.kuro-date-from').addEventListener('change', () => { panel.dataset.page = '1'; renderPanel(); });
@@ -322,10 +376,14 @@ export function ensurePanel(refreshUI) {
     panel.querySelector('.kuro-clear-all').addEventListener('click', () => {
       const ok = confirm('確定要清空目前版本的清單資料嗎？');
       if (!ok) return;
+      const dbSnapshot = { ...getDB() };
       setDB({});
       saveDB();
       refreshUI();
-      showToast('已清空全部資料', 'info');
+      showToast('已清空全部資料', 'info', 5000, {
+        label: '復原',
+        onClick: () => { setDB(dbSnapshot); saveDB(); refreshUI(); },
+      });
     });
     panel.querySelector('.kuro-hard-reset').addEventListener('click', () => {
       const ok = confirm('確定要重置所有版本資料嗎？這會刪除 v1 / v2 的資料，且無法復原。');
@@ -352,39 +410,67 @@ export function ensurePanel(refreshUI) {
     const batchAction = (action) => {
       const ids = [...panelState.selected];
       if (!ids.length) return;
+      beginBatch();
       if (action === 'delete') {
         const ok = confirm(`確定要刪除選取的 ${ids.length} 筆資料嗎？`);
-        if (!ok) return;
+        if (!ok) { endBatch(); return; }
+        const snapshots = {};
+        ids.forEach(id => { snapshots[id] = { ...getEntry(id) }; });
         ids.forEach(id => removeEntry(id));
-        showToast(`已刪除 ${ids.length} 筆`, 'info');
+        panelState.selected.clear();
+        endBatch();
+        showToast(`已刪除 ${ids.length} 筆`, 'info', 5000, {
+          label: '復原',
+          onClick: () => {
+            beginBatch();
+            Object.entries(snapshots).forEach(([id, data]) => upsert(id, data));
+            endBatch();
+          },
+        });
       } else {
+        const snapshots = {};
         ids.forEach(id => {
           const entry = getEntry(id);
-          if (entry) upsert(id, { ...entry, status: action });
+          if (entry) {
+            snapshots[id] = { ...entry };
+            upsert(id, { ...entry, status: action });
+          }
         });
-        showToast(`已將 ${ids.length} 筆設為${statusLabel[action]}`, 'success');
+        panelState.selected.clear();
+        endBatch();
+        showToast(`已將 ${ids.length} 筆設為${statusLabel[action]}`, 'success', 5000, {
+          label: '復原',
+          onClick: () => {
+            beginBatch();
+            Object.entries(snapshots).forEach(([id, data]) => upsert(id, data));
+            endBatch();
+          },
+        });
       }
-      panelState.selected.clear();
-      refreshUI();
     };
     panel.querySelector('.kuro-batch-todo').addEventListener('click', () => batchAction('todo'));
     panel.querySelector('.kuro-batch-seen').addEventListener('click', () => batchAction('seen'));
     panel.querySelector('.kuro-batch-downloaded').addEventListener('click', () => batchAction('downloaded'));
+    panel.querySelector('.kuro-batch-skipped').addEventListener('click', () => batchAction('skipped'));
     panel.querySelector('.kuro-batch-delete').addEventListener('click', () => batchAction('delete'));
     panel.querySelector('.kuro-batch-clear').addEventListener('click', () => {
       panelState.selected.clear();
       renderPanel();
     });
   }
+
+  updateToggleCount();
 }
 
 export function renderPanel() {
   const panel = document.getElementById(PANEL_ID);
   if (!panel) return;
 
+  updateToggleCount();
+
   const db = getDB();
   const search = panel.querySelector('.kuro-search')?.value?.trim().toLowerCase() || '';
-  const filter = panel.querySelector('.kuro-filter')?.value || '';
+  const filter = panel.querySelector('.kuro-pill.active')?.dataset.filter || '';
   const sortMode = panel.querySelector('.kuro-sort')?.value || 'manual';
   const sortDir = panel.querySelector('.kuro-sort-dir')?.value || 'desc';
   const dateFrom = panel.querySelector('.kuro-date-from')?.value || '';
@@ -394,8 +480,20 @@ export function renderPanel() {
   const list = panel.querySelector('.kuro-list');
   if (!list) return;
 
-  let items = Object.values(db)
-    .filter(item => (item.status && VALID_STATUSES.includes(item.status)) || (item.note && String(item.note).trim()))
+  // All valid items (before filter/search)
+  const allItems = Object.values(db)
+    .filter(item => (item.status && VALID_STATUSES.includes(item.status)) || (item.note && String(item.note).trim()));
+
+  // Update pill counts
+  const pills = panel.querySelectorAll('.kuro-pill');
+  pills.forEach(pill => {
+    const f = pill.dataset.filter;
+    const count = f === '' ? allItems.length : allItems.filter(x => x.status === f).length;
+    const countEl = pill.querySelector('.kuro-pill-count');
+    if (countEl) countEl.textContent = count;
+  });
+
+  let items = allItems
     .filter(item => !filter || item.status === filter)
     .filter(item => !search || `${item.title || ''} ${item.note || ''}`.toLowerCase().includes(search))
     .filter(item => !dateFrom || isoDateOnly(item.createdAt) >= dateFrom)
@@ -411,8 +509,7 @@ export function renderPanel() {
         if (db[item.threadId]) db[item.threadId].manualOrder = idx;
       });
       saveDB();
-      items = Object.values(db)
-        .filter(item => (item.status && VALID_STATUSES.includes(item.status)) || (item.note && String(item.note).trim()))
+      items = allItems
         .filter(item => !filter || item.status === filter)
         .filter(item => !search || `${item.title || ''} ${item.note || ''}`.toLowerCase().includes(search))
         .filter(item => !dateFrom || isoDateOnly(item.createdAt) >= dateFrom)
@@ -433,7 +530,7 @@ export function renderPanel() {
   const start = (currentPage - 1) * perPage;
   const pagedItems = items.slice(start, start + perPage);
 
-  // Summary bar (#12)
+  // Summary bar with stat visualization (#12)
   const pageInfo = panel.querySelector('.kuro-page-info');
   if (pageInfo) pageInfo.textContent = `第 ${currentPage} / ${totalPages} 頁`;
   const pager = panel.querySelector('.kuro-pager');
@@ -445,20 +542,45 @@ export function renderPanel() {
     const todoCount = items.filter(x => x.status === 'todo').length;
     const seenCount = items.filter(x => x.status === 'seen').length;
     const downloadedCount = items.filter(x => x.status === 'downloaded').length;
-    let text = `共 ${items.length} 筆 · 待看 ${todoCount} · 已看 ${seenCount} · 已下載 ${downloadedCount}`;
+    const skippedCount = items.filter(x => x.status === 'skipped').length;
+    let text = `共 ${items.length} 筆 · 待看 ${todoCount} · 已看 ${seenCount} · 已下載 ${downloadedCount} · 略過 ${skippedCount}`;
     if (search || filter || dateFrom || dateTo || noThumb || hasNote) {
-      const allCount = Object.values(db).filter(item => (item.status && VALID_STATUSES.includes(item.status)) || (item.note && String(item.note).trim())).length;
-      text = `搜尋結果 ${items.length}/${allCount} 筆 · 待看 ${todoCount} · 已看 ${seenCount} · 已下載 ${downloadedCount}`;
+      text = `搜尋結果 ${items.length}/${allItems.length} 筆 · 待看 ${todoCount} · 已看 ${seenCount} · 已下載 ${downloadedCount} · 略過 ${skippedCount}`;
     }
     if (sortMode === 'manual') text += ' · 可拖曳排序';
-    summaryBar.textContent = text;
+
+    summaryBar.innerHTML = '';
+    const textEl = document.createElement('div');
+    textEl.textContent = text;
+    summaryBar.appendChild(textEl);
+
+    // Visual stat bar
+    if (items.length > 0) {
+      const statBar = document.createElement('div');
+      statBar.className = 'kuro-stat-bar';
+      const segments = [
+        { count: todoCount, color: statusColor.todo },
+        { count: seenCount, color: statusColor.seen },
+        { count: downloadedCount, color: statusColor.downloaded },
+        { count: skippedCount, color: statusColor.skipped },
+      ];
+      segments.forEach(seg => {
+        if (seg.count <= 0) return;
+        const div = document.createElement('div');
+        div.className = 'kuro-stat-segment';
+        div.style.width = `${(seg.count / items.length) * 100}%`;
+        div.style.background = seg.color;
+        statBar.appendChild(div);
+      });
+      summaryBar.appendChild(statBar);
+    }
   }
   const prevBtn = panel.querySelector('.kuro-prev-page');
   const nextBtn = panel.querySelector('.kuro-next-page');
   if (prevBtn) prevBtn.disabled = currentPage <= 1;
   if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
 
-  // Batch bar (#2)
+  // Batch bar
   const batchBar = panel.querySelector('.kuro-batch-bar');
   if (batchBar) {
     if (panelState.selected.size > 0) {
@@ -469,9 +591,10 @@ export function renderPanel() {
     }
   }
 
-  list.replaceChildren();
+  // Build cards using DocumentFragment (#2)
+  const fragment = document.createDocumentFragment();
 
-  // Empty state (#14)
+  // Empty state
   if (!items.length) {
     const empty = document.createElement('div');
     empty.className = 'kuro-empty-state';
@@ -487,54 +610,28 @@ export function renderPanel() {
         <div class="kuro-empty-text">清單是空的<br>在論壇列表頁點擊 ⭐ 開始追蹤帖子</div>
       `;
     }
-    list.appendChild(empty);
+    fragment.appendChild(empty);
+    list.replaceChildren(fragment);
     return;
   }
 
   pagedItems.forEach((item, pageIndex) => {
     const expanded = isExpanded(item.threadId);
     const box = document.createElement('div');
-    box.className = 'kuro-item' + (expanded ? ' expanded' : '');
+    box.className = 'kuro-item' + (expanded ? ' expanded' : '') + (sortMode === 'manual' ? ' kuro-item-manual' : '');
     box.dataset.threadId = item.threadId;
 
-    // Checkbox (#2)
-    const checkCol = document.createElement('div');
-    checkCol.className = 'kuro-item-check';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = panelState.selected.has(item.threadId);
-    checkbox.addEventListener('change', () => {
-      if (checkbox.checked) {
-        panelState.selected.add(item.threadId);
-      } else {
-        panelState.selected.delete(item.threadId);
-      }
-      const bar = panel.querySelector('.kuro-batch-bar');
-      if (bar) {
-        if (panelState.selected.size > 0) {
-          bar.style.display = 'flex';
-          bar.querySelector('.kuro-batch-info').textContent = `已選 ${panelState.selected.size} 筆`;
-        } else {
-          bar.style.display = 'none';
-        }
-      }
-    });
-    checkCol.appendChild(checkbox);
-    box.appendChild(checkCol);
-
-    // Handle column (manual order tools)
-    let handleCol = document.createElement('div');
+    // Order column (manual mode only)
     if (sortMode === 'manual') {
-      const tools = document.createElement('div');
-      tools.className = 'kuro-order-tools';
       const globalIndex = start + pageIndex;
-      const orderWrap = document.createElement('div');
-      orderWrap.style.display = 'flex';
-      orderWrap.style.alignItems = 'center';
-      orderWrap.style.gap = '4px';
-      const orderLabel = document.createElement('span');
-      orderLabel.className = 'kuro-order-label';
-      orderLabel.textContent = '#';
+      const orderCol = document.createElement('div');
+      orderCol.className = 'kuro-order-col';
+
+      const upBtn = createButton('↑', () => moveManualOrder(item.threadId, 'up'), false, false, '上移');
+      const downBtn = createButton('↓', () => moveManualOrder(item.threadId, 'down'), false, false, '下移');
+      if (globalIndex === 0) upBtn.disabled = true;
+      if (globalIndex === items.length - 1) downBtn.disabled = true;
+
       const posInput = document.createElement('input');
       posInput.type = 'number';
       posInput.min = '1';
@@ -544,24 +641,16 @@ export function renderPanel() {
       posInput.title = '輸入順位';
       const commitPosition = () => setManualOrderPosition(item.threadId, posInput.value);
       posInput.addEventListener('change', commitPosition);
-      posInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          commitPosition();
-        }
+      posInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); commitPosition(); }
       });
-      orderWrap.appendChild(orderLabel);
-      orderWrap.appendChild(posInput);
-      const upBtn = createButton('↑', () => moveManualOrder(item.threadId, 'up'), false, false, '上移');
-      const downBtn = createButton('↓', () => moveManualOrder(item.threadId, 'down'), false, false, '下移');
-      if (globalIndex === 0) upBtn.disabled = true;
-      if (globalIndex === items.length - 1) downBtn.disabled = true;
-      tools.appendChild(orderWrap);
-      tools.appendChild(upBtn);
-      tools.appendChild(downBtn);
-      handleCol.appendChild(tools);
 
-      // Drag-and-drop (#7)
+      orderCol.appendChild(upBtn);
+      orderCol.appendChild(posInput);
+      orderCol.appendChild(downBtn);
+      box.appendChild(orderCol);
+
+      // Drag-and-drop
       box.draggable = true;
       box.addEventListener('dragstart', (e) => {
         panelState.dragId = item.threadId;
@@ -593,25 +682,52 @@ export function renderPanel() {
         }
       });
     }
-    box.appendChild(handleCol);
 
-    // Thumbnail
+    // Thumbnail (click to toggle selection)
     let thumbWrap;
     if (item.thumb) {
       thumbWrap = document.createElement('div');
       thumbWrap.className = 'kuro-thumb';
+      if (panelState.selected.has(item.threadId)) thumbWrap.classList.add('selected');
       const img = document.createElement('img');
       img.src = item.thumb;
       img.alt = item.title || 'thumb';
       img.loading = 'lazy';
       img.referrerPolicy = 'no-referrer';
       img.onerror = () => {
-        thumbWrap.replaceWith(makePlaceholderThumb());
+        const ph = makePlaceholderThumb();
+        if (panelState.selected.has(item.threadId)) ph.classList.add('selected');
+        ph.addEventListener('click', thumbWrap._selectHandler);
+        thumbWrap.replaceWith(ph);
       };
       thumbWrap.appendChild(img);
     } else {
       thumbWrap = makePlaceholderThumb();
+      if (panelState.selected.has(item.threadId)) thumbWrap.classList.add('selected');
     }
+    const updateBatchBar = () => {
+      const bar = panel.querySelector('.kuro-batch-bar');
+      if (bar) {
+        if (panelState.selected.size > 0) {
+          bar.style.display = 'flex';
+          bar.querySelector('.kuro-batch-info').textContent = `已選 ${panelState.selected.size} 筆`;
+        } else {
+          bar.style.display = 'none';
+        }
+      }
+    };
+    thumbWrap._selectHandler = (e) => {
+      e.stopPropagation();
+      if (panelState.selected.has(item.threadId)) {
+        panelState.selected.delete(item.threadId);
+        thumbWrap.classList.remove('selected');
+      } else {
+        panelState.selected.add(item.threadId);
+        thumbWrap.classList.add('selected');
+      }
+      updateBatchBar();
+    };
+    thumbWrap.addEventListener('click', thumbWrap._selectHandler);
     box.appendChild(thumbWrap);
 
     // Content
@@ -632,6 +748,7 @@ export function renderPanel() {
     titleLink.innerHTML = `<strong>${item.title || ''}</strong>`;
     titleLine.appendChild(titleLink);
     left.appendChild(titleLine);
+
     const meta = document.createElement('div');
     meta.className = 'kuro-status-line';
     const badge = document.createElement('span');
@@ -644,6 +761,14 @@ export function renderPanel() {
     updated.textContent = `更新 ${formatTime(item.updatedAt)}`;
     meta.appendChild(updated);
     left.appendChild(meta);
+
+    // Note preview when collapsed (#11)
+    if (!expanded && item.note && String(item.note).trim()) {
+      const notePreview = document.createElement('div');
+      notePreview.className = 'kuro-note-preview';
+      notePreview.textContent = '📝 ' + String(item.note).trim().replace(/\n/g, ' ');
+      left.appendChild(notePreview);
+    }
 
     const right = document.createElement('button');
     right.type = 'button';
@@ -679,7 +804,7 @@ export function renderPanel() {
     linkWrap.appendChild(link);
     body.appendChild(linkWrap);
 
-    // Inline note editing (#11)
+    // Inline note editing
     const note = document.createElement('textarea');
     note.className = 'kuro-note-edit';
     note.placeholder = '備註...';
@@ -691,7 +816,7 @@ export function renderPanel() {
     });
     body.appendChild(note);
 
-    // Status buttons with active highlight (#18)
+    // Status buttons with active highlight
     const row = document.createElement('div');
     row.className = 'kuro-row-actions';
     row.appendChild(createButton('⭐ 待看', () => {
@@ -706,14 +831,24 @@ export function renderPanel() {
       panelState.expanded[item.threadId] = true;
       upsert(item.threadId, { ...item, status: 'downloaded' });
     }, item.status === 'downloaded'));
+    row.appendChild(createButton('🚫 略過', () => {
+      panelState.expanded[item.threadId] = true;
+      upsert(item.threadId, { ...item, status: 'skipped' });
+    }, item.status === 'skipped'));
     row.appendChild(createButton('❌ 清除', () => {
+      const snapshot = { ...item };
       removeEntry(item.threadId);
-      showToast('已從清單中移除', 'info');
+      showToast('已從清單中移除', 'info', 5000, {
+        label: '復原',
+        onClick: () => upsert(snapshot.threadId, snapshot),
+      });
     }));
     body.appendChild(row);
 
     content.appendChild(body);
     box.appendChild(content);
-    list.appendChild(box);
+    fragment.appendChild(box);
   });
+
+  list.replaceChildren(fragment);
 }

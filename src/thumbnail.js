@@ -47,6 +47,7 @@ function collectNextPageLinks(doc, url, visited) {
 export async function fetchThumbForTid(threadId, startUrl = location.origin + '/forum.php?mod=forumdisplay&fid=48', maxPages = 120, onProgress = null) {
   if (!threadId) return '';
   const visited = new Set();
+  const queued = new Set([startUrl]);
   const queue = [startUrl];
   let scanned = 0;
   let backoff = FETCH_DELAY;
@@ -70,7 +71,7 @@ export async function fetchThumbForTid(threadId, startUrl = location.origin + '/
       }
 
       for (const abs of collectNextPageLinks(doc, url, visited)) {
-        if (!queue.includes(abs)) queue.push(abs);
+        if (!queued.has(abs)) { queued.add(abs); queue.push(abs); }
       }
 
       backoff = FETCH_DELAY;
@@ -119,6 +120,7 @@ export async function fetchAllMissingThumbs(refreshUI) {
 
   const pending = new Set(missingIds);
   const visited = new Set();
+  const queued = new Set([location.href]);
   let queue = [location.href];
   let pagesScanned = 0;
   let found = 0;
@@ -153,7 +155,7 @@ export async function fetchAllMissingThumbs(refreshUI) {
       });
 
       for (const abs of collectNextPageLinks(doc, url, visited)) {
-        if (!queue.includes(abs)) queue.push(abs);
+        if (!queued.has(abs)) { queued.add(abs); queue.push(abs); }
       }
 
       saveDB();

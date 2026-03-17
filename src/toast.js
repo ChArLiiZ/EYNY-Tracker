@@ -11,16 +11,34 @@ function getContainer() {
   return container;
 }
 
-export function showToast(message, type = 'info', duration = 3000) {
+export function showToast(message, type = 'info', duration = 3000, action = null) {
   const toast = document.createElement('div');
   toast.className = `kuro-toast kuro-toast-${type}`;
-  toast.textContent = message;
+
+  const textSpan = document.createElement('span');
+  textSpan.textContent = message;
+  toast.appendChild(textSpan);
+
+  if (action) {
+    const btn = document.createElement('button');
+    btn.className = 'kuro-toast-action';
+    btn.textContent = action.label || '復原';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      action.onClick();
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    });
+    toast.appendChild(btn);
+  }
+
   getContainer().appendChild(toast);
   requestAnimationFrame(() => {
     requestAnimationFrame(() => toast.classList.add('show'));
   });
+  const effectiveDuration = action ? Math.max(duration, 5000) : duration;
   setTimeout(() => {
     toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
-  }, duration);
+  }, effectiveDuration);
 }

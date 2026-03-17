@@ -23,38 +23,51 @@ export function makePlaceholderThumb() {
   return div;
 }
 
+const STATUS_CLASSES = ['kuro-todo', 'kuro-seen', 'kuro-downloaded', 'kuro-skipped'];
+const STATUS_CLASS_MAP = { todo: 'kuro-todo', seen: 'kuro-seen', downloaded: 'kuro-downloaded', skipped: 'kuro-skipped' };
+const TEXT_MAP = {
+  todo: ['⭐', '⭐ 待看'],
+  seen: ['👁', '👁 已看'],
+  downloaded: ['⬇', '⬇ 已下載'],
+  skipped: ['🚫', '🚫 略過'],
+};
+
 export function applyVisualToHost(host, threadId) {
   if (!host || !threadId) return;
 
-  host.classList.remove('kuro-seen', 'kuro-todo', 'kuro-downloaded');
-  host.querySelectorAll(':scope > .kuro-badge').forEach(el => el.remove());
-
   const entry = getEntry(threadId);
-  if (!entry || !entry.status) return;
+  const status = entry?.status || '';
+  const prevStatus = host.dataset.kuroStatus || '';
 
-  const badge = document.createElement('span');
-  badge.className = 'kuro-badge';
-  badge.textContent = statusLabel[entry.status] || entry.status;
-  badge.style.background = statusColor[entry.status] || '#999';
-  host.appendChild(badge);
+  // Skip if nothing changed
+  if (prevStatus === status) return;
+  host.dataset.kuroStatus = status;
 
-  if (entry.status === 'todo') host.classList.add('kuro-todo');
-  if (entry.status === 'downloaded') {
-    host.classList.add('kuro-downloaded');
-    host.classList.add('kuro-seen');
+  // Update classes
+  for (const cls of STATUS_CLASSES) host.classList.remove(cls);
+  if (STATUS_CLASS_MAP[status]) host.classList.add(STATUS_CLASS_MAP[status]);
+
+  // Update or create badge
+  let badge = host.querySelector(':scope > .kuro-badge');
+  if (status) {
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'kuro-badge';
+      host.appendChild(badge);
+    }
+    badge.textContent = statusLabel[status] || status;
+    badge.style.background = statusColor[status] || '#999';
+  } else if (badge) {
+    badge.remove();
   }
 
+  // Update active button states
   const actions = host.querySelector(':scope > .kuro-actions');
   if (actions) {
     const btns = actions.querySelectorAll('button');
-    btns.forEach(btn => btn.classList.remove('active'));
-    const textMap = {
-      todo: ['⭐', '⭐ 待看'],
-      seen: ['👁', '👁 已看'],
-      downloaded: ['⬇', '⬇ 已下載'],
-    };
+    const matches = TEXT_MAP[status] || [];
     btns.forEach(btn => {
-      if ((textMap[entry.status] || []).includes(btn.textContent)) btn.classList.add('active');
+      btn.classList.toggle('active', matches.includes(btn.textContent));
     });
   }
 }

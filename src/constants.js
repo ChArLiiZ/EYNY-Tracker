@@ -4,16 +4,18 @@ export const PANEL_ID = 'kuro-panel-root';
 export const TOGGLE_ID = 'kuro-panel-toggle';
 export const STYLE_ID = 'kuro-eyny-style';
 export const TOAST_CONTAINER_ID = 'kuro-toast-container';
-export const VALID_STATUSES = ['todo', 'seen', 'downloaded'];
+export const VALID_STATUSES = ['todo', 'seen', 'downloaded', 'skipped'];
 
 export const statusLabel = {
   todo: '待看',
   seen: '已看',
   downloaded: '已下載',
+  skipped: '略過',
 };
 
 export const statusColor = {
-  todo: '#f6c344',
-  seen: '#8b949e',
-  downloaded: '#3fb950',
+  todo: '#f0c351',
+  seen: '#6ec8f5',
+  downloaded: '#6b7280',
+  skipped: '#9b7280',
 };

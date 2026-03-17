@@ -5,6 +5,7 @@ import { nowIso } from './utils.js';
 
 let db = loadDB();
 let refreshUICallback = null;
+let batchDepth = 0;
 
 function loadDB() {
   try {
@@ -80,9 +81,22 @@ export function normalizeEntry(threadId, patch = {}) {
   };
 }
 
+export function beginBatch() {
+  batchDepth++;
+}
+
+export function endBatch() {
+  if (--batchDepth <= 0) {
+    batchDepth = 0;
+    saveDB();
+    if (refreshUICallback) refreshUICallback();
+  }
+}
+
 export function upsert(threadId, patch) {
   if (!threadId) return;
   db[threadId] = normalizeEntry(threadId, patch);
+  if (batchDepth > 0) return;
   saveDB();
   if (refreshUICallback) refreshUICallback();
 }
@@ -90,6 +104,7 @@ export function upsert(threadId, patch) {
 export function removeEntry(threadId) {
   if (!threadId) return;
   delete db[threadId];
+  if (batchDepth > 0) return;
   saveDB();
   if (refreshUICallback) refreshUICallback();
 }

@@ -3,14 +3,19 @@ import { setRefreshUICallback, getEntry, upsert, removeEntry } from './db.js';
 import { extractThreadId } from './utils.js';
 import { injectStyle } from './style.js';
 import { scanListPage, scanSearchPage, scanThreadPage } from './scanner.js';
-import { ensurePanel, renderPanel } from './panel.js';
+import { ensurePanel, renderPanel, updateToggleCount } from './panel.js';
 import { showToast } from './toast.js';
 
 function refreshUI() {
   scanListPage();
   scanSearchPage();
   scanThreadPage();
-  renderPanel();
+  updateToggleCount();
+  // Only render panel if it's visible
+  const panel = document.getElementById(PANEL_ID);
+  if (panel && panel.classList.contains('show')) {
+    renderPanel();
+  }
 }
 
 setRefreshUICallback(refreshUI);
@@ -35,8 +40,8 @@ function setupKeyboardShortcuts() {
       note: getEntry(threadId)?.note || '',
     };
 
-    const statusMap = { '1': 'todo', '2': 'seen', '3': 'downloaded' };
-    const labelMap = { '1': '待看', '2': '已看', '3': '已下載' };
+    const statusMap = { '1': 'todo', '2': 'seen', '3': 'downloaded', '4': 'skipped' };
+    const labelMap = { '1': '待看', '2': '已看', '3': '已下載', '4': '略過' };
 
     if (statusMap[e.key]) {
       e.preventDefault();
@@ -50,8 +55,12 @@ function setupKeyboardShortcuts() {
       const existing = getEntry(threadId);
       if (existing) {
         e.preventDefault();
+        const snapshot = { ...existing };
         removeEntry(threadId);
-        showToast('已從清單中移除', 'info');
+        showToast('已從清單中移除', 'info', 5000, {
+          label: '復原',
+          onClick: () => upsert(threadId, snapshot),
+        });
       }
     }
   });
@@ -63,13 +72,23 @@ function init() {
   refreshUI();
   setupKeyboardShortcuts();
 
+  let mutationTimer = null;
   const observer = new MutationObserver((mutations) => {
+    if (mutationTimer) return; // already scheduled
     let shouldRefresh = false;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
+        // Skip our own injected elements
         if (node.id === PANEL_ID || node.id === TOGGLE_ID) continue;
         if (node.closest && node.closest(`#${PANEL_ID}`)) continue;
+        if (node.classList && (
+          node.classList.contains('kuro-actions') ||
+          node.classList.contains('kuro-badge') ||
+          node.classList.contains('kuro-inline-note') ||
+          node.classList.contains('kuro-skip-all-wrap') ||
+          node.classList.contains('kuro-toast')
+        )) continue;
         if (
           node.matches?.('tbody[id^="normalthread_"], #thread_subject, h1, a.xst, a.s.xst, a[href*="mod=viewthread"]') ||
           node.querySelector?.('tbody[id^="normalthread_"], #thread_subject, h1, a.xst, a.s.xst, a[href*="mod=viewthread"]')
@@ -80,7 +99,12 @@ function init() {
       }
       if (shouldRefresh) break;
     }
-    if (shouldRefresh) setTimeout(refreshUI, 0);
+    if (shouldRefresh) {
+      mutationTimer = setTimeout(() => {
+        mutationTimer = null;
+        refreshUI();
+      }, 100);
+    }
   });
 
   observer.observe(document.body, { childList: true, subtree: true });
