@@ -73,40 +73,64 @@ function renumberManualOrder(ids) {
   saveDB();
 }
 
-function moveManualOrder(threadId, direction) {
-  const ids = getManualOrderedIds();
-  const idx = ids.indexOf(threadId);
-  if (idx < 0) return;
-  const target = direction === 'up' ? idx - 1 : idx + 1;
-  if (target < 0 || target >= ids.length) return;
-  [ids[idx], ids[target]] = [ids[target], ids[idx]];
-  renumberManualOrder(ids);
+// Reorder within a given subset of IDs, then apply back to the full global order
+function reorderWithinView(viewIds, mutator) {
+  const globalIds = getManualOrderedIds();
+  // Apply the mutation to the view subset
+  const newViewIds = mutator(viewIds);
+  if (!newViewIds) return;
+  // Rebuild global list: replace positions that belong to the view subset
+  const viewSet = new Set(viewIds);
+  const result = [];
+  let vi = 0;
+  for (const gid of globalIds) {
+    if (viewSet.has(gid)) {
+      result.push(newViewIds[vi++]);
+    } else {
+      result.push(gid);
+    }
+  }
+  renumberManualOrder(result);
   renderPanel();
 }
 
-function setManualOrderPosition(threadId, position) {
-  const ids = getManualOrderedIds();
-  const idx = ids.indexOf(threadId);
-  if (idx < 0) return;
-  let pos = Number(position);
-  if (!Number.isFinite(pos)) return;
-  pos = Math.max(1, Math.min(ids.length, Math.floor(pos)));
-  const [item] = ids.splice(idx, 1);
-  ids.splice(pos - 1, 0, item);
-  renumberManualOrder(ids);
-  renderPanel();
+function moveManualOrder(threadId, direction, viewIds) {
+  reorderWithinView(viewIds, (ids) => {
+    const idx = ids.indexOf(threadId);
+    if (idx < 0) return null;
+    const target = direction === 'up' ? idx - 1 : idx + 1;
+    if (target < 0 || target >= ids.length) return null;
+    const copy = [...ids];
+    [copy[idx], copy[target]] = [copy[target], copy[idx]];
+    return copy;
+  });
 }
 
-function handleDragDrop(fromId, toId) {
+function setManualOrderPosition(threadId, position, viewIds) {
+  reorderWithinView(viewIds, (ids) => {
+    const idx = ids.indexOf(threadId);
+    if (idx < 0) return null;
+    let pos = Number(position);
+    if (!Number.isFinite(pos)) return null;
+    pos = Math.max(1, Math.min(ids.length, Math.floor(pos)));
+    const copy = [...ids];
+    const [item] = copy.splice(idx, 1);
+    copy.splice(pos - 1, 0, item);
+    return copy;
+  });
+}
+
+function handleDragDrop(fromId, toId, viewIds) {
   if (!fromId || !toId || fromId === toId) return;
-  const ids = getManualOrderedIds();
-  const fromIdx = ids.indexOf(fromId);
-  const toIdx = ids.indexOf(toId);
-  if (fromIdx < 0 || toIdx < 0) return;
-  const [item] = ids.splice(fromIdx, 1);
-  ids.splice(toIdx, 0, item);
-  renumberManualOrder(ids);
-  renderPanel();
+  reorderWithinView(viewIds, (ids) => {
+    const fromIdx = ids.indexOf(fromId);
+    const toIdx = ids.indexOf(toId);
+    if (fromIdx < 0 || toIdx < 0) return null;
+    const copy = [...ids];
+    const [item] = copy.splice(fromIdx, 1);
+    copy.splice(toIdx, 0, item);
+    return copy;
+  });
 }
 
 function sortItems(items, mode, direction = 'desc') {
@@ -615,6 +639,8 @@ export function renderPanel() {
     return;
   }
 
+  const viewIds = sortMode === 'manual' ? items.map(x => x.threadId) : null;
+
   pagedItems.forEach((item, pageIndex) => {
     const expanded = isExpanded(item.threadId);
     const box = document.createElement('div');
@@ -627,8 +653,8 @@ export function renderPanel() {
       const orderCol = document.createElement('div');
       orderCol.className = 'kuro-order-col';
 
-      const upBtn = createButton('↑', () => moveManualOrder(item.threadId, 'up'), false, false, '上移');
-      const downBtn = createButton('↓', () => moveManualOrder(item.threadId, 'down'), false, false, '下移');
+      const upBtn = createButton('↑', () => moveManualOrder(item.threadId, 'up', viewIds), false, false, '上移');
+      const downBtn = createButton('↓', () => moveManualOrder(item.threadId, 'down', viewIds), false, false, '下移');
       if (globalIndex === 0) upBtn.disabled = true;
       if (globalIndex === items.length - 1) downBtn.disabled = true;
 
@@ -639,7 +665,7 @@ export function renderPanel() {
       posInput.value = String(globalIndex + 1);
       posInput.className = 'kuro-order-input';
       posInput.title = '輸入順位';
-      const commitPosition = () => setManualOrderPosition(item.threadId, posInput.value);
+      const commitPosition = () => setManualOrderPosition(item.threadId, posInput.value, viewIds);
       posInput.addEventListener('change', commitPosition);
       posInput.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') { ev.preventDefault(); commitPosition(); }
@@ -678,7 +704,7 @@ export function renderPanel() {
         box.classList.remove('kuro-drag-over');
         const fromId = e.dataTransfer.getData('text/plain');
         if (fromId && fromId !== item.threadId) {
-          handleDragDrop(fromId, item.threadId);
+          handleDragDrop(fromId, item.threadId, viewIds);
         }
       });
     }
