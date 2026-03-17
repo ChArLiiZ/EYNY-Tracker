@@ -22,7 +22,8 @@ setRefreshUICallback(refreshUI);
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
-    // Skip if user is typing in an input/textarea
+    // Skip if modifier keys are held or user is typing in an input/textarea
+    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
     const tag = (e.target.tagName || '').toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
 
