@@ -1,7 +1,0 @@
-.env
-venv/
-.openclaw/
-memory/
-__pycache__/
-*.pyc
-node_modules/
