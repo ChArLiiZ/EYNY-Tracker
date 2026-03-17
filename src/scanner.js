@@ -3,6 +3,7 @@ import { getDB, getEntry, normalizeEntry, saveDB, upsert, removeEntry } from './
 import { extractThreadId } from './utils.js';
 import { createButton, applyVisualToHost, setProgressState } from './ui-helpers.js';
 import { extractListThumb, fetchThumbForTid } from './thumbnail.js';
+import { showToast } from './toast.js';
 
 function guessThumb(container) {
   if (!container) return '';
@@ -10,6 +11,38 @@ function guessThumb(container) {
     return extractListThumb(container);
   }
   return '';
+}
+
+function toggleInlineNote(host, thread) {
+  const existing = host.querySelector('.kuro-inline-note');
+  if (existing) {
+    existing.remove();
+    return;
+  }
+
+  const current = getEntry(thread.threadId);
+  const wrap = document.createElement('div');
+  wrap.className = 'kuro-inline-note';
+
+  const textarea = document.createElement('textarea');
+  textarea.placeholder = '輸入備註...';
+  textarea.value = current?.note || '';
+
+  const saveBtn = createButton('💾', () => {
+    upsert(thread.threadId, {
+      title: thread.title,
+      url: thread.url,
+      thumb: thread.thumb || current?.thumb || '',
+      status: current?.status || '',
+      note: textarea.value,
+    });
+    showToast('備註已儲存', 'success');
+  }, false, true, '儲存備註');
+
+  wrap.appendChild(textarea);
+  wrap.appendChild(saveBtn);
+  host.appendChild(wrap);
+  textarea.focus();
 }
 
 function ensureActionsForThread(host, thread, visualContainer, iconOnly = false, includeThumbFetch = false) {
@@ -27,28 +60,22 @@ function ensureActionsForThread(host, thread, visualContainer, iconOnly = false,
     note: getEntry(thread.threadId)?.note || '',
   });
 
-  wrap.appendChild(createButton(iconOnly ? '⭐' : '⭐ 待看', () => {
-    upsert(thread.threadId, { ...basePatch(), status: 'todo' });
-  }, false, iconOnly, '待看'));
+  const statusAction = (status) => () => {
+    const existing = getEntry(thread.threadId);
+    upsert(thread.threadId, { ...basePatch(), status });
+    if (existing && existing.status) {
+      showToast(`已更新狀態`, 'success');
+    } else {
+      showToast('已加入清單', 'success');
+    }
+  };
 
-  wrap.appendChild(createButton(iconOnly ? '👁' : '👁 已看', () => {
-    upsert(thread.threadId, { ...basePatch(), status: 'seen' });
-  }, false, iconOnly, '已看'));
-
-  wrap.appendChild(createButton(iconOnly ? '⬇' : '⬇ 已下載', () => {
-    upsert(thread.threadId, { ...basePatch(), status: 'downloaded' });
-  }, false, iconOnly, '已下載'));
+  wrap.appendChild(createButton(iconOnly ? '⭐' : '⭐ 待看', statusAction('todo'), false, iconOnly, '待看'));
+  wrap.appendChild(createButton(iconOnly ? '👁' : '👁 已看', statusAction('seen'), false, iconOnly, '已看'));
+  wrap.appendChild(createButton(iconOnly ? '⬇' : '⬇ 已下載', statusAction('downloaded'), false, iconOnly, '已下載'));
 
   wrap.appendChild(createButton(iconOnly ? '📝' : '📝 備註', () => {
-    const current = getEntry(thread.threadId);
-    const note = prompt('備註', current?.note || '');
-    if (note !== null) {
-      upsert(thread.threadId, {
-        ...basePatch(),
-        status: current?.status || '',
-        note,
-      });
-    }
+    toggleInlineNote(host, thread);
   }, false, iconOnly, '備註'));
 
   if (includeThumbFetch) {
@@ -65,16 +92,17 @@ function ensureActionsForThread(host, thread, visualContainer, iconOnly = false,
         upsert(thread.threadId, { ...current, ...basePatch(), thumb });
         setProgressState({ text: '已補抓此篇縮圖', percent: 100 });
         setTimeout(() => setProgressState(null), 1500);
-        alert('已補抓此篇縮圖。');
+        showToast('已補抓此篇縮圖', 'success');
       } else {
         setProgressState(null);
-        alert('找不到這篇的列表縮圖。可能沉得太後面，或該帖本來就沒有列表縮圖。');
+        showToast('找不到列表縮圖，可能沉太後面或無縮圖', 'warning');
       }
     }, false, iconOnly, '補抓此篇縮圖'));
   }
 
   wrap.appendChild(createButton(iconOnly ? '❌' : '❌ 清除', () => {
     removeEntry(thread.threadId);
+    showToast('已從清單中移除', 'info');
   }, false, iconOnly, '清除'));
 
   host.appendChild(wrap);

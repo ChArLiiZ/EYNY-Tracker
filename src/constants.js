@@ -1,7 +1,9 @@
 export const KEY = 'kuro_eyny_tracker_v2';
+export const UI_STATE_KEY = 'kuro_eyny_ui_state';
 export const PANEL_ID = 'kuro-panel-root';
 export const TOGGLE_ID = 'kuro-panel-toggle';
 export const STYLE_ID = 'kuro-eyny-style';
+export const TOAST_CONTAINER_ID = 'kuro-toast-container';
 export const VALID_STATUSES = ['todo', 'seen', 'downloaded'];
 
 export const statusLabel = {

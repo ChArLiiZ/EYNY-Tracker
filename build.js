@@ -4,13 +4,15 @@ const fs = require('fs');
 const banner = `// ==UserScript==
 // @name         EYNY Tracker
 // @namespace    kuro-eyny
-// @version      0.4.0
-// @description  待看/已看/已下載管理（v0.4）
+// @version      0.5.0
+// @description  待看/已看/已下載管理（v0.5）
 // @match        https://www*.eyny.com/forum.php?*
 // @match        https://www*.eyny.com/forum-*.html
 // @match        https://www*.eyny.com/thread-*.html
 // @match        https://www*.eyny.com/search.php*
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_deleteValue
 // ==/UserScript==`;
 
 const watch = process.argv.includes('--watch');

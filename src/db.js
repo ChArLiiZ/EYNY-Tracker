@@ -1,20 +1,34 @@
-import { KEY, VALID_STATUSES } from './constants.js';
+import { KEY, UI_STATE_KEY, VALID_STATUSES } from './constants.js';
 import { nowIso } from './utils.js';
+
+/* globals GM_getValue, GM_setValue, GM_deleteValue */
 
 let db = loadDB();
 let refreshUICallback = null;
 
 function loadDB() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(KEY) || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    let data = GM_getValue(KEY, null);
+    if (data === null) {
+      // One-time migration from localStorage
+      const lsData = localStorage.getItem(KEY);
+      if (lsData) {
+        data = JSON.parse(lsData);
+        GM_setValue(KEY, data);
+      }
+    }
+    return data && typeof data === 'object' ? data : {};
   } catch {
     return {};
   }
 }
 
 export function saveDB() {
-  localStorage.setItem(KEY, JSON.stringify(db));
+  try {
+    GM_setValue(KEY, db);
+  } catch (e) {
+    console.error('[EYNY Tracker] 儲存失敗', e);
+  }
 }
 
 export function getDB() {
@@ -27,6 +41,26 @@ export function setDB(newDb) {
 
 export function setRefreshUICallback(fn) {
   refreshUICallback = fn;
+}
+
+export function loadUIState() {
+  try {
+    return GM_getValue(UI_STATE_KEY, {});
+  } catch {
+    return {};
+  }
+}
+
+export function saveUIState(state) {
+  try {
+    GM_setValue(UI_STATE_KEY, state);
+  } catch {}
+}
+
+export function deleteGMValue(key) {
+  try {
+    GM_deleteValue(key);
+  } catch {}
 }
 
 export function normalizeEntry(threadId, patch = {}) {

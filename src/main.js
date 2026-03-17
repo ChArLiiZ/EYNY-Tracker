@@ -1,8 +1,10 @@
 import { PANEL_ID, TOGGLE_ID } from './constants.js';
-import { setRefreshUICallback } from './db.js';
+import { setRefreshUICallback, getEntry, upsert, removeEntry } from './db.js';
+import { extractThreadId } from './utils.js';
 import { injectStyle } from './style.js';
 import { scanListPage, scanSearchPage, scanThreadPage } from './scanner.js';
 import { ensurePanel, renderPanel } from './panel.js';
+import { showToast } from './toast.js';
 
 function refreshUI() {
   scanListPage();
@@ -13,10 +15,53 @@ function refreshUI() {
 
 setRefreshUICallback(refreshUI);
 
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Skip if user is typing in an input/textarea
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+
+    // Only on thread pages
+    const threadId = extractThreadId(location.href);
+    if (!threadId) return;
+
+    const titleEl = document.querySelector('#thread_subject') || document.querySelector('h1');
+    const title = titleEl?.textContent?.trim() || '';
+
+    const basePatch = {
+      title,
+      url: location.href,
+      thumb: getEntry(threadId)?.thumb || '',
+      note: getEntry(threadId)?.note || '',
+    };
+
+    const statusMap = { '1': 'todo', '2': 'seen', '3': 'downloaded' };
+    const labelMap = { '1': '待看', '2': '已看', '3': '已下載' };
+
+    if (statusMap[e.key]) {
+      e.preventDefault();
+      const existing = getEntry(threadId);
+      upsert(threadId, { ...basePatch, status: statusMap[e.key] });
+      showToast(
+        existing?.status ? `已更新為${labelMap[e.key]}` : `已加入清單：${labelMap[e.key]}`,
+        'success'
+      );
+    } else if (e.key === '0' || e.key === 'Delete') {
+      const existing = getEntry(threadId);
+      if (existing) {
+        e.preventDefault();
+        removeEntry(threadId);
+        showToast('已從清單中移除', 'info');
+      }
+    }
+  });
+}
+
 function init() {
   injectStyle();
   ensurePanel(refreshUI);
   refreshUI();
+  setupKeyboardShortcuts();
 
   const observer = new MutationObserver((mutations) => {
     let shouldRefresh = false;

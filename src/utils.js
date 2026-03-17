@@ -13,3 +13,16 @@ export function extractThreadId(url) {
   const m = String(url).match(/thread-(\d+)-/) || String(url).match(/[?&]tid=(\d+)/);
   return m ? m[1] : '';
 }
+
+export function debounce(fn, ms) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
+export function isoDateOnly(iso) {
+  if (!iso) return '';
+  return iso.slice(0, 10);
+}

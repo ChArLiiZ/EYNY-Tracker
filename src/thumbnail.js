@@ -2,6 +2,10 @@ import { VALID_STATUSES } from './constants.js';
 import { getDB, getEntry, normalizeEntry, saveDB } from './db.js';
 import { extractThreadId } from './utils.js';
 import { setProgressState } from './ui-helpers.js';
+import { showToast } from './toast.js';
+
+const FETCH_DELAY = 300;
+const MAX_BACKOFF = 5000;
 
 export function extractListThumb(tb) {
   if (!tb) return '';
@@ -23,11 +27,29 @@ export function extractListThumb(tb) {
   return '';
 }
 
+function collectNextPageLinks(doc, url, visited) {
+  const links = [];
+  doc.querySelectorAll('div.pg a[href]').forEach(link => {
+    const href = link.getAttribute('href') || '';
+    const text = (link.textContent || '').trim();
+    if (!href || href.startsWith('javascript')) return;
+    if (!/^\d+$/.test(text)) return;
+    try {
+      const abs = new URL(href, url).href;
+      if (/forum(?:\.php\?mod=forumdisplay&fid=48|\-48\-)/.test(abs) && !visited.has(abs)) {
+        links.push(abs);
+      }
+    } catch {}
+  });
+  return links;
+}
+
 export async function fetchThumbForTid(threadId, startUrl = location.origin + '/forum.php?mod=forumdisplay&fid=48', maxPages = 120, onProgress = null) {
   if (!threadId) return '';
   const visited = new Set();
   const queue = [startUrl];
   let scanned = 0;
+  let backoff = FETCH_DELAY;
 
   while (queue.length && scanned < maxPages) {
     const url = queue.shift();
@@ -47,24 +69,16 @@ export async function fetchThumbForTid(threadId, startUrl = location.origin + '/
         if (thumb) return thumb;
       }
 
-      const nextLinks = [];
-      doc.querySelectorAll('div.pg a[href]').forEach(link => {
-        const href = link.getAttribute('href') || '';
-        const text = (link.textContent || '').trim();
-        if (!href || href.startsWith('javascript')) return;
-        if (!/^\d+$/.test(text)) return;
-        try {
-          const abs = new URL(href, url).href;
-          if (/forum(?:\.php\?mod=forumdisplay&fid=48|\-48\-)/.test(abs) && !visited.has(abs)) {
-            nextLinks.push(abs);
-          }
-        } catch {}
-      });
-
-      for (const abs of nextLinks) {
-        if (!visited.has(abs) && !queue.includes(abs)) queue.push(abs);
+      for (const abs of collectNextPageLinks(doc, url, visited)) {
+        if (!queue.includes(abs)) queue.push(abs);
       }
-    } catch {}
+
+      backoff = FETCH_DELAY;
+      await new Promise(r => setTimeout(r, FETCH_DELAY));
+    } catch {
+      backoff = Math.min(backoff * 2, MAX_BACKOFF);
+      await new Promise(r => setTimeout(r, backoff));
+    }
   }
   return '';
 }
@@ -87,7 +101,10 @@ export function fetchMissingThumbsFromCurrentPage(refreshUI) {
   });
   if (updated > 0) saveDB();
   refreshUI();
-  alert(updated > 0 ? `已補抓 ${updated} 筆縮圖（僅目前頁面能找到的項目）。` : '這一頁沒有可補的縮圖。');
+  showToast(
+    updated > 0 ? `已補抓 ${updated} 筆縮圖（僅目前頁面能找到的項目）。` : '這一頁沒有可補的縮圖。',
+    updated > 0 ? 'success' : 'info'
+  );
 }
 
 export async function fetchAllMissingThumbs(refreshUI) {
@@ -96,7 +113,7 @@ export async function fetchAllMissingThumbs(refreshUI) {
     .filter(item => ((item.status && VALID_STATUSES.includes(item.status)) || (item.note && String(item.note).trim())) && !item.thumb)
     .map(item => item.threadId);
   if (!missingIds.length) {
-    alert('目前沒有缺少縮圖的項目。');
+    showToast('目前沒有缺少縮圖的項目。', 'info');
     return;
   }
 
@@ -106,6 +123,7 @@ export async function fetchAllMissingThumbs(refreshUI) {
   let pagesScanned = 0;
   let found = 0;
   const maxPages = 600;
+  let backoff = FETCH_DELAY;
 
   setProgressState({ text: `正在補抓縮圖… 0/${missingIds.length}`, percent: 0 });
 
@@ -134,28 +152,20 @@ export async function fetchAllMissingThumbs(refreshUI) {
         found += 1;
       });
 
-      doc.querySelectorAll('div.pg a[href]').forEach(link => {
-        const href = link.getAttribute('href') || '';
-        const text = (link.textContent || '').trim();
-        if (!href || href.startsWith('javascript')) return;
-        if (!/^\d+$/.test(text)) return;
-        try {
-          const abs = new URL(href, url).href;
-          if (/forum(?:\.php\?mod=forumdisplay&fid=48|\-48\-)/.test(abs) && !visited.has(abs)) {
-            queue.push(abs);
-          }
-        } catch {}
-      });
+      for (const abs of collectNextPageLinks(doc, url, visited)) {
+        if (!queue.includes(abs)) queue.push(abs);
+      }
 
       saveDB();
       refreshUI();
-      const done = found;
-      const total = missingIds.length;
-      const percent = total ? (done / total) * 100 : 100;
-      setProgressState({ text: `正在補抓縮圖… 已掃描 ${pagesScanned} 頁，已補到 ${done}/${total}，剩餘 ${pending.size}`, percent });
-      await new Promise(r => setTimeout(r, 250));
-    } catch (e) {
+      const percent = missingIds.length ? (found / missingIds.length) * 100 : 100;
+      setProgressState({ text: `正在補抓縮圖… 已掃描 ${pagesScanned} 頁，已補到 ${found}/${missingIds.length}，剩餘 ${pending.size}`, percent });
+      backoff = FETCH_DELAY;
+      await new Promise(r => setTimeout(r, FETCH_DELAY));
+    } catch {
+      backoff = Math.min(backoff * 2, MAX_BACKOFF);
       setProgressState({ text: `補抓中發生錯誤，已掃描 ${pagesScanned} 頁，繼續中…`, percent: missingIds.length ? (found / missingIds.length) * 100 : 100 });
+      await new Promise(r => setTimeout(r, backoff));
     }
   }
 
@@ -163,5 +173,8 @@ export async function fetchAllMissingThumbs(refreshUI) {
   refreshUI();
   setProgressState({ text: `補抓完成：共補到 ${found}/${missingIds.length}，掃描 ${pagesScanned} 頁`, percent: 100 });
   setTimeout(() => setProgressState(null), 3000);
-  alert(`補抓完成：共補到 ${found}/${missingIds.length} 張縮圖。` + (pending.size ? `\n仍有 ${pending.size} 張沒找到（可能沉太後面或該頁無縮圖）。` : ''));
+  showToast(
+    `補抓完成：共補到 ${found}/${missingIds.length} 張縮圖。` + (pending.size ? ` 仍有 ${pending.size} 張沒找到。` : ''),
+    found > 0 ? 'success' : 'info'
+  );
 }
