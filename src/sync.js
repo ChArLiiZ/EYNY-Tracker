@@ -206,17 +206,10 @@ export const autoSync = debounce(() => {
   }
 }, 3000);
 
-// ── Init: pull on page load ─────────────────────────────
+// ── Init: no auto-pull, only manual sync pulls ─────────
 
 export async function initSync() {
-  const cfg = getSyncConfig();
-  if (cfg.autoSync && isConfigured()) {
-    try {
-      await syncPull(true);
-    } catch (err) {
-      console.warn('[EYNY Tracker] Auto sync pull on init failed:', err);
-    }
-  }
+  // Auto-pull removed: download only via manual "sync now" button
 }
 
 // ── Status indicator ────────────────────────────────────
@@ -283,7 +276,7 @@ export function showSyncSettings() {
       </label>
       <label class="kuro-sync-label kuro-sync-checkbox-label">
         <input type="checkbox" class="kuro-sync-auto" ${cfg.autoSync ? 'checked' : ''}>
-        自動同步（每次修改後自動上傳，開啟頁面時自動下載）
+        自動上傳（每次修改後自動上傳到 Gist，下載需手動點「立即同步」）
       </label>
       ${cfg.lastSync ? `<div class="kuro-mini" style="margin-top:4px">上次同步：${cfg.lastSync}</div>` : ''}
       <div class="kuro-sync-dialog-actions"></div>

@@ -80,8 +80,8 @@ function init() {
   ensurePanel(refreshUI);
   refreshUI();
   setupKeyboardShortcuts();
-  // Cloud sync: pull latest on page load
-  initSync().then(() => refreshUI()).catch(() => {});
+  // Cloud sync: init (auto-push only, pull is manual)
+  initSync();
 
   let mutationTimer = null;
   const observer = new MutationObserver((mutations) => {
