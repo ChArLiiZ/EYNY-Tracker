@@ -1,15 +1,20 @@
 import { PANEL_ID, TOGGLE_ID } from './constants.js';
 import { setRefreshUICallback, getEntry, upsert, removeEntry } from './db.js';
-import { extractThreadId } from './utils.js';
+import { extractThreadId, isHgamefree } from './utils.js';
 import { injectStyle } from './style.js';
-import { scanListPage, scanSearchPage, scanThreadPage } from './scanner.js';
+import { scanListPage, scanSearchPage, scanThreadPage, scanHgameListPage, scanHgamePostPage } from './scanner.js';
 import { ensurePanel, renderPanel, updateToggleCount } from './panel.js';
 import { showToast } from './toast.js';
 
 function refreshUI() {
-  scanListPage();
-  scanSearchPage();
-  scanThreadPage();
+  if (isHgamefree()) {
+    scanHgameListPage();
+    scanHgamePostPage();
+  } else {
+    scanListPage();
+    scanSearchPage();
+    scanThreadPage();
+  }
   updateToggleCount();
   // Only render panel if it's visible
   const panel = document.getElementById(PANEL_ID);
@@ -31,7 +36,7 @@ function setupKeyboardShortcuts() {
     const threadId = extractThreadId(location.href);
     if (!threadId) return;
 
-    const titleEl = document.querySelector('#thread_subject') || document.querySelector('h1');
+    const titleEl = document.querySelector('#thread_subject') || document.querySelector('h1.entry-title') || document.querySelector('h1');
     const title = titleEl?.textContent?.trim() || '';
 
     const basePatch = {
@@ -90,9 +95,14 @@ function init() {
           node.classList.contains('kuro-skip-all-wrap') ||
           node.classList.contains('kuro-toast')
         )) continue;
+        // EYNY selectors
+        const eynyMatch = 'tbody[id^="normalthread_"], #thread_subject, h1, a.xst, a.s.xst, a[href*="mod=viewthread"]';
+        // hgamefree selectors
+        const hgfMatch = 'article[class*="gridlove-post"], article[id^="post-"], .entry-title, .widget a[href*="hgamefree"], aside a[href*="hgamefree"]';
+        const selectors = isHgamefree() ? hgfMatch : eynyMatch;
         if (
-          node.matches?.('tbody[id^="normalthread_"], #thread_subject, h1, a.xst, a.s.xst, a[href*="mod=viewthread"]') ||
-          node.querySelector?.('tbody[id^="normalthread_"], #thread_subject, h1, a.xst, a.s.xst, a[href*="mod=viewthread"]')
+          node.matches?.(selectors) ||
+          node.querySelector?.(selectors)
         ) {
           shouldRefresh = true;
           break;

@@ -659,16 +659,16 @@ export function renderPanel() {
       if (globalIndex === items.length - 1) downBtn.disabled = true;
 
       const posInput = document.createElement('input');
-      posInput.type = 'number';
-      posInput.min = '1';
-      posInput.max = String(items.length);
+      posInput.type = 'text';
+      posInput.inputMode = 'numeric';
+      posInput.pattern = '[0-9]*';
       posInput.value = String(globalIndex + 1);
       posInput.className = 'kuro-order-input';
       posInput.title = '輸入順位';
       const commitPosition = () => setManualOrderPosition(item.threadId, posInput.value, viewIds);
       posInput.addEventListener('change', commitPosition);
       posInput.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter') { ev.preventDefault(); commitPosition(); }
+        if (ev.key === 'Enter') { ev.preventDefault(); posInput.blur(); commitPosition(); }
       });
 
       orderCol.appendChild(upBtn);

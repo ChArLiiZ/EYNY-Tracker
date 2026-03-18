@@ -10,6 +10,7 @@ const banner = `// ==UserScript==
 // @match        https://www*.eyny.com/forum-*.html
 // @match        https://www*.eyny.com/thread-*.html
 // @match        https://www*.eyny.com/search.php*
+// @match        https://hgamefree.info/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue

@@ -149,11 +149,22 @@ export function injectStyle() {
       text-shadow:0 1px 2px rgba(0,0,0,.2);
     }
 
-    /* === Visual states on forum pages === */
+    /* === Visual states on forum/site pages === */
     .kuro-todo{box-shadow:inset 0 0 0 2px rgba(240,195,81,.35)}
     .kuro-seen{box-shadow:inset 0 0 0 2px rgba(110,200,245,.4)}
     .kuro-downloaded{opacity:.45}
     .kuro-skipped{opacity:.4;box-shadow:inset 0 0 0 2px rgba(155,114,128,.3)}
+
+    /* === hgamefree.info article card adaptations === */
+    article[class*="gridlove-post"] .kuro-actions{
+      padding:6px 10px;
+    }
+    article[class*="gridlove-post"] .kuro-badge{
+      position:absolute;top:8px;right:8px;z-index:2;
+      color:#fff;border:none;text-shadow:0 1px 3px rgba(0,0,0,.4);
+      font-size:11px;padding:3px 10px;
+    }
+    article[class*="gridlove-post"]{position:relative;transition:opacity .2s,box-shadow .2s}
 
     /* === Inline note on forum pages === */
     .kuro-inline-note{margin-top:6px;display:flex;gap:6px;align-items:flex-start}
@@ -167,6 +178,44 @@ export function injectStyle() {
     }
     .kuro-inline-note textarea:focus{outline:none;border-color:var(--k-border-focus)}
     .kuro-inline-note button{flex-shrink:0}
+
+    /* === Similar title warning === */
+    .kuro-similar-hint{
+      font-size:11px;color:#e2a93b;
+      margin-top:4px;padding:3px 8px;
+      background:rgba(226,169,59,.08);
+      border:1px solid rgba(226,169,59,.2);
+      border-radius:6px;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      max-width:100%;line-height:1.6;
+      cursor:help;
+    }
+    /* Light theme adaptation for similar hint on forum pages */
+    body:not(#_) .kuro-similar-hint:not(#${PANEL_ID} .kuro-similar-hint){
+      background:rgba(226,169,59,.1);
+      border-color:rgba(226,169,59,.3);
+      color:#b8860b;
+    }
+
+    /* === Sidebar widget tracker styles (hgamefree) === */
+    aside li > .kuro-actions,
+    .sidebar li > .kuro-actions,
+    .widget li > .kuro-actions,
+    [class*="widget"] li > .kuro-actions{
+      clear:both;display:flex;gap:2px;margin-top:2px;flex-wrap:nowrap;
+    }
+    aside li > .kuro-actions .kuro-icon-btn,
+    .sidebar li > .kuro-actions .kuro-icon-btn,
+    .widget li > .kuro-actions .kuro-icon-btn,
+    [class*="widget"] li > .kuro-actions .kuro-icon-btn{
+      padding:1px 4px;font-size:11px;min-width:22px;
+    }
+    aside li > .kuro-badge,
+    .sidebar li > .kuro-badge,
+    .widget li > .kuro-badge,
+    [class*="widget"] li > .kuro-badge{
+      font-size:9px;padding:1px 6px;margin-left:4px;
+    }
 
     /* === Keyboard shortcut hint on thread pages === */
     .kuro-kbd-bar{font-size:11px;color:#999;margin-top:6px;line-height:1.8}
@@ -350,9 +399,7 @@ export function injectStyle() {
       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
     }
     .kuro-order-col .kuro-btn{padding:1px 6px;min-width:0;font-size:11px;line-height:1.3;border-radius:6px}
-    .kuro-order-input{width:32px !important;margin:0 !important;padding:2px !important;text-align:center;font-size:11px !important;-moz-appearance:textfield;border-radius:6px !important}
-    .kuro-order-input::-webkit-outer-spin-button,
-    .kuro-order-input::-webkit-inner-spin-button{appearance:none;-webkit-appearance:none;margin:0}
+    .kuro-order-input{width:38px !important;margin:0 !important;padding:2px 4px !important;text-align:center;font-size:11px !important;border-radius:6px !important}
 
     .kuro-thumb{cursor:pointer;position:relative;
       width:70px;height:56px;
