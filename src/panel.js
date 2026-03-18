@@ -5,6 +5,7 @@ import { formatTime, isoDateOnly } from './utils.js';
 import { createButton, makePlaceholderThumb } from './ui-helpers.js';
 import { fetchMissingThumbsFromCurrentPage, fetchAllMissingThumbs } from './thumbnail.js';
 import { showToast } from './toast.js';
+import { showSyncSettings, syncFull, getSyncConfig } from './sync.js';
 
 const panelState = {
   expanded: {},
@@ -296,6 +297,11 @@ export function ensurePanel(refreshUI) {
           <button type="button" class="kuro-btn kuro-batch-clear">取消選取</button>
         </div>
         <div class="kuro-actions-grid">
+          <button type="button" class="kuro-btn kuro-sync-now">☁ 立即同步</button>
+          <button type="button" class="kuro-btn kuro-sync-settings">⚙ 同步設定</button>
+          <span class="kuro-sync-status"></span>
+        </div>
+        <div class="kuro-actions-grid">
           <button type="button" class="kuro-btn kuro-fetch-missing-thumbs">🖼 補抓本頁缺圖</button>
           <button type="button" class="kuro-btn kuro-fetch-all-thumbs">🖼 全部補抓縮圖</button>
           <button type="button" class="kuro-btn kuro-export">匯出 JSON</button>
@@ -423,6 +429,24 @@ export function ensurePanel(refreshUI) {
       showToast('已重置所有版本資料，頁面將重新整理', 'info');
       setTimeout(() => location.reload(), 800);
     });
+    panel.querySelector('.kuro-sync-now').addEventListener('click', async () => {
+      const cfg = getSyncConfig();
+      if (!cfg.token || !cfg.gistId) {
+        showSyncSettings();
+        return;
+      }
+      const btn = panel.querySelector('.kuro-sync-now');
+      btn.disabled = true;
+      btn.textContent = '同步中...';
+      try {
+        await syncFull(false);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '☁ 立即同步';
+      }
+    });
+    panel.querySelector('.kuro-sync-settings').addEventListener('click', () => showSyncSettings());
+
     panel.querySelector('.kuro-import-file').addEventListener('change', (e) => {
       const file = e.target.files?.[0];
       if (!file) return;

@@ -156,15 +156,19 @@ export function injectStyle() {
     .kuro-skipped{opacity:.4;box-shadow:inset 0 0 0 2px rgba(155,114,128,.3)}
 
     /* === hgamefree.info article card adaptations === */
+    article[class*="gridlove-post"]{position:relative;transition:opacity .2s,box-shadow .2s;z-index:1;overflow:visible}
     article[class*="gridlove-post"] .kuro-actions{
-      padding:6px 10px;
+      padding:8px 10px;position:relative;z-index:3;
     }
     article[class*="gridlove-post"] .kuro-badge{
-      position:absolute;top:8px;right:8px;z-index:2;
-      color:#fff;border:none;text-shadow:0 1px 3px rgba(0,0,0,.4);
-      font-size:11px;padding:3px 10px;
+      position:absolute;top:8px;right:8px;z-index:4;
+      color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.6);
+      font-size:13px;font-weight:700;padding:5px 14px;
+      border-radius:8px;letter-spacing:.5px;
+      border:1px solid rgba(255,255,255,.3);
+      box-shadow:0 2px 12px rgba(0,0,0,.4);
+      backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
     }
-    article[class*="gridlove-post"]{position:relative;transition:opacity .2s,box-shadow .2s}
 
     /* === Inline note on forum pages === */
     .kuro-inline-note{margin-top:6px;display:flex;gap:6px;align-items:flex-start}
@@ -533,6 +537,54 @@ export function injectStyle() {
     .kuro-import-stat{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--k-border);font-size:13px;color:var(--k-text-dim)}
     .kuro-import-stat strong{color:var(--k-text)}
     .kuro-import-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end}
+
+    /* === Sync UI === */
+    .kuro-sync-status{font-size:11px;line-height:28px;padding:0 8px;border-radius:6px;white-space:nowrap}
+    .kuro-sync-uploading,.kuro-sync-downloading{color:#6ec8f5;animation:kuro-pulse 1s infinite}
+    .kuro-sync-success{color:#4ade80}
+    .kuro-sync-error{color:#f87171}
+    @keyframes kuro-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+    .kuro-sync-dialog{
+      position:fixed;inset:0;z-index:100001;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,.5);
+      backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+      opacity:0;transition:opacity .25s ease;
+    }
+    .kuro-sync-dialog.show{opacity:1}
+    .kuro-sync-dialog-content{
+      background:var(--k-glass-heavy);
+      backdrop-filter:blur(var(--k-blur));-webkit-backdrop-filter:blur(var(--k-blur));
+      border:1px solid var(--k-border);
+      border-radius:20px;padding:28px;
+      max-width:480px;width:90%;color:var(--k-text);
+      box-shadow:0 24px 80px rgba(0,0,0,.6);
+    }
+    .kuro-sync-dialog h3{margin:0 0 16px;font-size:16px;font-weight:600;letter-spacing:.3px}
+    .kuro-sync-help{font-size:12px;color:var(--k-text-dim);margin-bottom:16px;line-height:1.6}
+    .kuro-sync-help p{margin:0 0 8px}
+    .kuro-sync-help details{margin-top:8px}
+    .kuro-sync-help summary{cursor:pointer;color:var(--k-text);font-weight:500}
+    .kuro-sync-help ol{margin:8px 0 0;padding-left:20px}
+    .kuro-sync-help li{margin-bottom:4px}
+    .kuro-sync-help a{color:#6ec8f5;text-decoration:underline}
+    .kuro-sync-help code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:11px}
+    .kuro-sync-label{display:block;margin-bottom:14px;font-size:13px;color:var(--k-text-dim)}
+    .kuro-sync-label .kuro-mini{font-size:11px;color:var(--k-text-dim);opacity:.7}
+    .kuro-sync-input{
+      display:block;width:100%;margin-top:6px;padding:8px 12px;
+      border:1px solid var(--k-border);border-radius:10px;
+      background:rgba(255,255,255,.05);color:var(--k-text);
+      font-size:13px;font-family:monospace;
+      box-sizing:border-box;
+    }
+    .kuro-sync-input:focus{outline:none;border-color:var(--k-border-focus)}
+    .kuro-sync-checkbox-label{display:flex;align-items:center;gap:8px;cursor:pointer}
+    .kuro-sync-checkbox-label input{margin:0}
+    .kuro-sync-dialog-actions{display:flex;gap:8px;margin-top:20px;justify-content:flex-end;flex-wrap:wrap}
+    .kuro-btn-primary{background:rgba(110,200,245,.2) !important;border-color:rgba(110,200,245,.4) !important;color:#6ec8f5 !important;font-weight:600}
+    .kuro-btn-primary:hover{background:rgba(110,200,245,.3) !important}
 
     /* === Pager === */
     .kuro-pager{justify-content:center;align-items:center;gap:12px;padding-top:4px}

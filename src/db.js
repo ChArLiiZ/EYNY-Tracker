@@ -6,6 +6,11 @@ import { nowIso } from './utils.js';
 let db = loadDB();
 let refreshUICallback = null;
 let batchDepth = 0;
+let onSaveCallback = null;
+
+export function setOnSaveCallback(fn) {
+  onSaveCallback = fn;
+}
 
 function loadDB() {
   try {
@@ -27,6 +32,7 @@ function loadDB() {
 export function saveDB() {
   try {
     GM_setValue(KEY, db);
+    if (onSaveCallback) onSaveCallback();
   } catch (e) {
     console.error('[EYNY Tracker] 儲存失敗', e);
   }

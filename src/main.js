@@ -1,10 +1,11 @@
 import { PANEL_ID, TOGGLE_ID } from './constants.js';
-import { setRefreshUICallback, getEntry, upsert, removeEntry } from './db.js';
+import { setRefreshUICallback, setOnSaveCallback, getEntry, upsert, removeEntry } from './db.js';
 import { extractThreadId, isHgamefree } from './utils.js';
 import { injectStyle } from './style.js';
 import { scanListPage, scanSearchPage, scanThreadPage, scanHgameListPage, scanHgamePostPage } from './scanner.js';
 import { ensurePanel, renderPanel, updateToggleCount } from './panel.js';
 import { showToast } from './toast.js';
+import { autoSync, initSync, setSyncRefreshUI } from './sync.js';
 
 function refreshUI() {
   if (isHgamefree()) {
@@ -24,6 +25,8 @@ function refreshUI() {
 }
 
 setRefreshUICallback(refreshUI);
+setSyncRefreshUI(refreshUI);
+setOnSaveCallback(autoSync);
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
@@ -77,6 +80,8 @@ function init() {
   ensurePanel(refreshUI);
   refreshUI();
   setupKeyboardShortcuts();
+  // Cloud sync: pull latest on page load
+  initSync().then(() => refreshUI()).catch(() => {});
 
   let mutationTimer = null;
   const observer = new MutationObserver((mutations) => {

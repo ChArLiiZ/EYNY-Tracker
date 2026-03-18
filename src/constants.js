@@ -4,6 +4,7 @@ export const PANEL_ID = 'kuro-panel-root';
 export const TOGGLE_ID = 'kuro-panel-toggle';
 export const STYLE_ID = 'kuro-eyny-style';
 export const TOAST_CONTAINER_ID = 'kuro-toast-container';
+export const SYNC_KEY = 'kuro_eyny_sync_config';
 export const VALID_STATUSES = ['todo', 'seen', 'downloaded', 'skipped'];
 
 export const statusLabel = {

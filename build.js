@@ -14,6 +14,9 @@ const banner = `// ==UserScript==
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
+// @grant        GM_xmlhttpRequest
+// @connect      api.github.com
+// @connect      gist.githubusercontent.com
 // ==/UserScript==`;
 
 const watch = process.argv.includes('--watch');
