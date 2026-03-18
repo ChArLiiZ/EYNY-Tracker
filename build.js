@@ -4,8 +4,8 @@ const fs = require('fs');
 const banner = `// ==UserScript==
 // @name         EYNY Tracker
 // @namespace    kuro-eyny
-// @version      0.5.0
-// @description  待看/已看/已下載管理（v0.5）
+// @version      0.6.0
+// @description  待看/已看/已下載/略過 管理（v0.6）
 // @match        https://www*.eyny.com/forum.php?*
 // @match        https://www*.eyny.com/forum-*.html
 // @match        https://www*.eyny.com/thread-*.html
