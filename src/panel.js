@@ -526,7 +526,7 @@ export function renderPanel() {
     .filter(item => !hasNote || (item.note && String(item.note).trim()));
 
   if (sortMode === 'manual') {
-    const needsInit = items.length > 0 && items.every(item => item.manualOrder === undefined || item.manualOrder === null || item.manualOrder === 999999);
+    const needsInit = items.length > 0 && items.every(item => item.manualOrder === undefined || item.manualOrder === null);
     if (needsInit) {
       const seeded = [...items].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
       seeded.forEach((item, idx) => {

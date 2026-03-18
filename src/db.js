@@ -64,6 +64,15 @@ export function deleteGMValue(key) {
   } catch {}
 }
 
+function nextManualOrder() {
+  let max = -1;
+  for (const id in db) {
+    const o = db[id].manualOrder;
+    if (typeof o === 'number' && o > max) max = o;
+  }
+  return max + 1;
+}
+
 export function normalizeEntry(threadId, patch = {}) {
   const old = db[threadId] || {};
   const createdAt = old.createdAt || nowIso();
@@ -75,7 +84,7 @@ export function normalizeEntry(threadId, patch = {}) {
     status,
     note: patch.note !== undefined ? patch.note : (old.note || ''),
     thumb: patch.thumb !== undefined ? patch.thumb : (old.thumb || ''),
-    manualOrder: patch.manualOrder !== undefined ? patch.manualOrder : (old.manualOrder ?? 999999),
+    manualOrder: patch.manualOrder !== undefined ? patch.manualOrder : (old.manualOrder ?? nextManualOrder()),
     createdAt,
     updatedAt: nowIso(),
   };
