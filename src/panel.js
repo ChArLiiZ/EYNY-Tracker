@@ -740,7 +740,7 @@ export function renderPanel() {
       thumbWrap.className = 'kuro-thumb';
       if (panelState.selected.has(item.threadId)) thumbWrap.classList.add('selected');
       const img = document.createElement('img');
-      img.src = item.thumb;
+      img.src = item.thumb.replace(/^http:\/\//i, 'https://');
       img.alt = item.title || 'thumb';
       img.loading = 'lazy';
       img.referrerPolicy = 'no-referrer';

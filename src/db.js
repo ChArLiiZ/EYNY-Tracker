@@ -89,7 +89,7 @@ export function normalizeEntry(threadId, patch = {}) {
     threadId,
     status,
     note: patch.note !== undefined ? patch.note : (old.note || ''),
-    thumb: patch.thumb !== undefined ? patch.thumb : (old.thumb || ''),
+    thumb: (patch.thumb !== undefined ? patch.thumb : (old.thumb || '')).replace(/^http:\/\//i, 'https://'),
     manualOrder: patch.manualOrder !== undefined ? patch.manualOrder : (old.manualOrder ?? nextManualOrder()),
     createdAt,
     updatedAt: nowIso(),
