@@ -1,6 +1,6 @@
 import { PANEL_ID, TOGGLE_ID } from './constants.js';
 import { setRefreshUICallback, setOnSaveCallback, getEntry, upsert, removeEntry } from './db.js';
-import { extractThreadId, isHgamefree } from './utils.js';
+import { extractThreadId, isHgamefree, debounce } from './utils.js';
 import { injectStyle } from './style.js';
 import { scanListPage, scanSearchPage, scanThreadPage, scanHgameListPage, scanHgamePostPage } from './scanner.js';
 import { ensurePanel, renderPanel, updateToggleCount } from './panel.js';
@@ -24,9 +24,18 @@ function refreshUI() {
   }
 }
 
-setRefreshUICallback(refreshUI);
-setSyncRefreshUI(refreshUI);
+// #11: Debounce refreshUI when triggered by DB operations to coalesce rapid updates
+const debouncedRefreshUI = debounce(refreshUI, 50);
+
+setRefreshUICallback(debouncedRefreshUI);
+setSyncRefreshUI(refreshUI); // Sync uses immediate refresh since it's a single operation
 setOnSaveCallback(autoSync);
+
+// #13: Cancel pending debounced calls on page unload to prevent truncated operations
+window.addEventListener('beforeunload', () => {
+  debouncedRefreshUI.cancel();
+  autoSync.cancel();
+});
 
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {

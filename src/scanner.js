@@ -29,11 +29,13 @@ function toggleInlineNote(host, thread) {
   textarea.value = current?.note || '';
 
   const saveBtn = createButton('💾', () => {
+    // Read live entry to avoid overwriting concurrent changes
+    const live = getEntry(thread.threadId);
     upsert(thread.threadId, {
       title: thread.title,
       url: thread.url,
-      thumb: thread.thumb || current?.thumb || '',
-      status: current?.status || '',
+      thumb: thread.thumb || live?.thumb || '',
+      status: live?.status || '',
       note: textarea.value,
     });
     showToast('備註已儲存', 'success');
@@ -111,10 +113,13 @@ function ensureActionsForThread(host, thread, visualContainer, iconOnly = false,
   host.appendChild(wrap);
 }
 
+// #8: Cache similar title results using a data attribute to avoid repeated O(n) scans
 function checkSimilarTitles(host, threadId, title) {
   // Only for untracked items
   if (getEntry(threadId)) return;
-  if (host.querySelector('.kuro-similar-hint')) return;
+  // Skip if already checked (even if no hint was shown)
+  if (host.dataset.kuroSimilarChecked) return;
+  host.dataset.kuroSimilarChecked = '1';
 
   const db = getDB();
   let bestMatch = null;
@@ -141,6 +146,7 @@ function checkSimilarTitles(host, threadId, title) {
   }
 }
 
+// #10: Only call extractListThumb when needed (tracked entry missing thumb, or untracked)
 function collectPageThreads() {
   const threads = [];
   document.querySelectorAll('tbody[id^="normalthread_"]').forEach(tb => {
@@ -148,11 +154,15 @@ function collectPageThreads() {
     if (!a) return;
     const threadId = extractThreadId(a.href) || tb.id.replace(/^\D+_/, '');
     if (!threadId) return;
+    // Defer thumb extraction: only extract if entry exists but has no thumb, or if untracked
+    const existing = getEntry(threadId);
+    const needThumb = !existing || !existing.thumb;
+    const thumb = needThumb ? extractListThumb(tb) : existing.thumb;
     threads.push({
       threadId,
       title: a.textContent.trim(),
       url: a.href,
-      thumb: extractListThumb(tb),
+      thumb,
       host: a.parentElement || tb,
       tb,
     });
@@ -160,8 +170,11 @@ function collectPageThreads() {
   return threads;
 }
 
-function ensureSkipAllButton(threads) {
-  if (document.querySelector('.kuro-skip-all-wrap')) return;
+// #5: Remove the old skip-all button on each scan so it captures fresh threads
+function ensureSkipAllButton(getThreads) {
+  // Remove stale button so the click handler always has fresh threads
+  const oldWrap = document.querySelector('.kuro-skip-all-wrap');
+  if (oldWrap) oldWrap.remove();
 
   const pagers = document.querySelectorAll('.pg, .pgt, #fd_page_bottom');
   let anchor = pagers[pagers.length - 1];
@@ -176,6 +189,8 @@ function ensureSkipAllButton(threads) {
   wrap.style.cssText = 'display:flex;justify-content:flex-end;padding:8px 0;gap:8px';
 
   const btn = createButton('🚫 略過本頁未分類', () => {
+    // Re-collect threads at click time to get the latest state
+    const threads = getThreads();
     const untracked = threads.filter(t => !getEntry(t.threadId));
     if (!untracked.length) {
       showToast('本頁所有文章都已分類', 'info');
@@ -207,17 +222,20 @@ function ensureSkipAllButton(threads) {
   anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
 }
 
+// #4: Batch thumb updates — collect all updates then save once
 export function scanListPage() {
   const threads = collectPageThreads();
+
+  let thumbUpdated = false;
+  const db = getDB();
 
   threads.forEach(({ threadId, title, url, thumb, host, tb }) => {
     const thread = { threadId, title, url, thumb };
 
     const old = getEntry(threadId);
     if (old && thread.thumb && !old.thumb) {
-      const db = getDB();
       db[threadId] = normalizeEntry(threadId, { ...old, ...thread });
-      saveDB();
+      thumbUpdated = true;
     }
 
     ensureActionsForThread(host, thread, tb, true);
@@ -225,8 +243,11 @@ export function scanListPage() {
     checkSimilarTitles(host, threadId, title);
   });
 
+  // Save once after all thumb updates
+  if (thumbUpdated) saveDB();
+
   if (threads.length > 0) {
-    ensureSkipAllButton(threads);
+    ensureSkipAllButton(collectPageThreads);
   }
 }
 
@@ -239,6 +260,9 @@ export function scanSearchPage() {
       const text = (a.textContent || '').trim();
       return text && /mod=viewthread|thread-\d+-/i.test(href);
     });
+
+  let thumbUpdated = false;
+  const db = getDB();
 
   links.forEach(a => {
     const threadId = extractThreadId(a.href);
@@ -259,15 +283,17 @@ export function scanSearchPage() {
 
     const old = getEntry(threadId);
     if (old && thread.thumb && !old.thumb) {
-      const db = getDB();
       db[threadId] = normalizeEntry(threadId, { ...old, ...thread });
-      saveDB();
+      thumbUpdated = true;
     }
 
     ensureActionsForThread(host, thread, row, true);
     applyVisualToHost(host, threadId);
     checkSimilarTitles(host, threadId, a.textContent.trim());
   });
+
+  // Save once after all thumb updates
+  if (thumbUpdated) saveDB();
 }
 
 export function scanThreadPage() {
@@ -328,14 +354,16 @@ export function scanHgameListPage() {
   if (!isHgamefree()) return;
   const posts = collectHgamePosts();
 
+  let thumbUpdated = false;
+  const db = getDB();
+
   posts.forEach(({ threadId, title, url, thumb, host }) => {
     const thread = { threadId, title, url, thumb };
 
     const old = getEntry(threadId);
     if (old && thread.thumb && !old.thumb) {
-      const db = getDB();
       db[threadId] = normalizeEntry(threadId, { ...old, ...thread });
-      saveDB();
+      thumbUpdated = true;
     }
 
     ensureActionsForThread(host, thread, null, true);
@@ -343,13 +371,18 @@ export function scanHgameListPage() {
     checkSimilarTitles(host, threadId, title);
   });
 
+  // Save once after all thumb updates
+  if (thumbUpdated) saveDB();
+
   if (posts.length > 0) {
-    ensureHgameSkipAllButton(posts);
+    ensureHgameSkipAllButton(collectHgamePosts);
   }
 }
 
-function ensureHgameSkipAllButton(posts) {
-  if (document.querySelector('.kuro-skip-all-wrap')) return;
+// #5: Same fix for hgamefree — re-collect posts at click time
+function ensureHgameSkipAllButton(getPosts) {
+  const oldWrap = document.querySelector('.kuro-skip-all-wrap');
+  if (oldWrap) oldWrap.remove();
 
   // Find pagination or main content area
   const pager = document.querySelector('.gridlove-pagination, .pagination, nav.navigation');
@@ -362,6 +395,8 @@ function ensureHgameSkipAllButton(posts) {
   wrap.style.cssText = 'display:flex;justify-content:flex-end;padding:12px 0;gap:8px';
 
   const btn = createButton('🚫 略過本頁未分類', () => {
+    // Re-collect posts at click time
+    const posts = getPosts();
     const untracked = posts.filter(t => !getEntry(t.threadId));
     if (!untracked.length) {
       showToast('本頁所有文章都已分類', 'info');

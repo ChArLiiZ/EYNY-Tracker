@@ -1,8 +1,8 @@
 {
   "name": "eyny-tracker",
-  "version": "1.0.0",
+  "version": "0.6.0",
   "description": "",
-  "main": "eyny-tracker.user.js",
+  "main": "src/main.js",
   "scripts": {
     "build": "node build.js",
     "dev": "node build.js --watch"

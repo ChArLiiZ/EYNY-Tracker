@@ -124,7 +124,9 @@ export async function fetchAllMissingThumbs(refreshUI) {
   let queue = [location.href];
   let pagesScanned = 0;
   let found = 0;
+  let unsavedChanges = 0;
   const maxPages = 600;
+  const SAVE_INTERVAL = 5; // Save every N pages or when new thumbs are found
   let backoff = FETCH_DELAY;
 
   setProgressState({ text: `正在補抓縮圖… 0/${missingIds.length}`, percent: 0 });
@@ -152,14 +154,19 @@ export async function fetchAllMissingThumbs(refreshUI) {
         db[tid] = normalizeEntry(tid, { ...entry, thumb });
         pending.delete(tid);
         found += 1;
+        unsavedChanges += 1;
       });
 
       for (const abs of collectNextPageLinks(doc, url, visited)) {
         if (!queued.has(abs)) { queued.add(abs); queue.push(abs); }
       }
 
-      saveDB();
-      refreshUI();
+      // Batch save: only persist every SAVE_INTERVAL pages or when new thumbs were found
+      if (unsavedChanges > 0 && (unsavedChanges >= 3 || pagesScanned % SAVE_INTERVAL === 0)) {
+        saveDB();
+        refreshUI();
+        unsavedChanges = 0;
+      }
       const percent = missingIds.length ? (found / missingIds.length) * 100 : 100;
       setProgressState({ text: `正在補抓縮圖… 已掃描 ${pagesScanned} 頁，已補到 ${found}/${missingIds.length}，剩餘 ${pending.size}`, percent });
       backoff = FETCH_DELAY;
@@ -171,6 +178,7 @@ export async function fetchAllMissingThumbs(refreshUI) {
     }
   }
 
+  // Final save for any remaining unsaved changes
   saveDB();
   refreshUI();
   setProgressState({ text: `補抓完成：共補到 ${found}/${missingIds.length}，掃描 ${pagesScanned} 頁`, percent: 100 });

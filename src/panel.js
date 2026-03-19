@@ -397,7 +397,7 @@ export function ensurePanel(refreshUI) {
       a.href = URL.createObjectURL(blob);
       a.download = `eyny-tracker-${new Date().toISOString().slice(0,10)}.json`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
       showToast('已匯出 JSON', 'success');
     });
     panel.querySelector('.kuro-import').addEventListener('click', () => {
@@ -541,29 +541,33 @@ export function renderPanel() {
     if (countEl) countEl.textContent = count;
   });
 
-  let items = allItems
-    .filter(item => !filter || item.status === filter)
-    .filter(item => !search || `${item.title || ''} ${item.note || ''}`.toLowerCase().includes(search))
-    .filter(item => !dateFrom || isoDateOnly(item.createdAt) >= dateFrom)
-    .filter(item => !dateTo || isoDateOnly(item.createdAt) <= dateTo)
-    .filter(item => !noThumb || !item.thumb)
-    .filter(item => !hasNote || (item.note && String(item.note).trim()));
+  const filterItem = (item) =>
+    (!filter || item.status === filter) &&
+    (!search || `${item.title || ''} ${item.note || ''}`.toLowerCase().includes(search)) &&
+    (!dateFrom || isoDateOnly(item.createdAt) >= dateFrom) &&
+    (!dateTo || isoDateOnly(item.createdAt) <= dateTo) &&
+    (!noThumb || !item.thumb) &&
+    (!hasNote || (item.note && String(item.note).trim()));
+
+  let items = allItems.filter(filterItem);
 
   if (sortMode === 'manual') {
-    const needsInit = items.length > 0 && items.every(item => item.manualOrder === undefined || item.manualOrder === null);
-    if (needsInit) {
-      const seeded = [...items].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-      seeded.forEach((item, idx) => {
-        if (db[item.threadId]) db[item.threadId].manualOrder = idx;
-      });
+    // Seed manualOrder for items that don't have one yet
+    const unseeded = items.filter(item => item.manualOrder === undefined || item.manualOrder === null);
+    if (unseeded.length > 0) {
+      // Find current max manualOrder across the entire DB
+      let maxOrder = -1;
+      for (const id in db) {
+        const o = db[id].manualOrder;
+        if (typeof o === 'number' && o > maxOrder) maxOrder = o;
+      }
+      unseeded
+        .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
+        .forEach((item, idx) => {
+          if (db[item.threadId]) db[item.threadId].manualOrder = maxOrder + 1 + idx;
+        });
       saveDB();
-      items = allItems
-        .filter(item => !filter || item.status === filter)
-        .filter(item => !search || `${item.title || ''} ${item.note || ''}`.toLowerCase().includes(search))
-        .filter(item => !dateFrom || isoDateOnly(item.createdAt) >= dateFrom)
-        .filter(item => !dateTo || isoDateOnly(item.createdAt) <= dateTo)
-        .filter(item => !noThumb || !item.thumb)
-        .filter(item => !hasNote || (item.note && String(item.note).trim()));
+      items = allItems.filter(filterItem);
     }
   }
 
@@ -745,6 +749,8 @@ export function renderPanel() {
       img.loading = 'lazy';
       img.referrerPolicy = 'no-referrer';
       img.onerror = () => {
+        // Guard: skip if the element has been detached from the DOM (e.g. panel re-rendered)
+        if (!thumbWrap.isConnected) return;
         const ph = makePlaceholderThumb();
         if (panelState.selected.has(item.threadId)) ph.classList.add('selected');
         ph.addEventListener('click', thumbWrap._selectHandler);
@@ -795,7 +801,9 @@ export function renderPanel() {
     titleLink.href = item.url;
     titleLink.target = '_self';
     titleLink.title = item.title || '';
-    titleLink.innerHTML = `<strong>${item.title || ''}</strong>`;
+    const titleStrong = document.createElement('strong');
+    titleStrong.textContent = item.title || '';
+    titleLink.appendChild(titleStrong);
     titleLine.appendChild(titleLink);
     left.appendChild(titleLine);
 
@@ -861,32 +869,26 @@ export function renderPanel() {
     note.value = item.note || '';
     note.addEventListener('change', () => {
       panelState.expanded[item.threadId] = true;
-      upsert(item.threadId, { ...item, note: note.value });
+      const current = getEntry(item.threadId) || item;
+      upsert(item.threadId, { ...current, note: note.value });
       showToast('備註已儲存', 'success');
     });
     body.appendChild(note);
 
-    // Status buttons with active highlight
+    // Status buttons with active highlight — always read live entry to avoid stale snapshot
     const row = document.createElement('div');
     row.className = 'kuro-row-actions';
-    row.appendChild(createButton('⭐ 待看', () => {
+    const liveUpsert = (status) => () => {
       panelState.expanded[item.threadId] = true;
-      upsert(item.threadId, { ...item, status: 'todo' });
-    }, item.status === 'todo'));
-    row.appendChild(createButton('👁 已看', () => {
-      panelState.expanded[item.threadId] = true;
-      upsert(item.threadId, { ...item, status: 'seen' });
-    }, item.status === 'seen'));
-    row.appendChild(createButton('⬇ 已下載', () => {
-      panelState.expanded[item.threadId] = true;
-      upsert(item.threadId, { ...item, status: 'downloaded' });
-    }, item.status === 'downloaded'));
-    row.appendChild(createButton('🚫 略過', () => {
-      panelState.expanded[item.threadId] = true;
-      upsert(item.threadId, { ...item, status: 'skipped' });
-    }, item.status === 'skipped'));
+      const current = getEntry(item.threadId) || item;
+      upsert(item.threadId, { ...current, status });
+    };
+    row.appendChild(createButton('⭐ 待看', liveUpsert('todo'), item.status === 'todo'));
+    row.appendChild(createButton('👁 已看', liveUpsert('seen'), item.status === 'seen'));
+    row.appendChild(createButton('⬇ 已下載', liveUpsert('downloaded'), item.status === 'downloaded'));
+    row.appendChild(createButton('🚫 略過', liveUpsert('skipped'), item.status === 'skipped'));
     row.appendChild(createButton('❌ 清除', () => {
-      const snapshot = { ...item };
+      const snapshot = { ...(getEntry(item.threadId) || item) };
       removeEntry(item.threadId);
       showToast('已從清單中移除', 'info', 5000, {
         label: '復原',

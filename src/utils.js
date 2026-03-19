@@ -14,8 +14,8 @@ export function extractThreadId(url) {
   // EYNY: thread-12345-1-1.html or ?tid=12345
   const eyny = s.match(/thread-(\d+)-/) || s.match(/[?&]tid=(\d+)/);
   if (eyny) return eyny[1];
-  // hgamefree: /anything/12345.html
-  const hgf = s.match(/hgamefree\.info\/.*?(\d+)\.html/);
+  // hgamefree: /post-slug/12345.html (must have a path segment before the ID)
+  const hgf = s.match(/hgamefree\.info\/[^/]+\/(\d+)\.html/);
   if (hgf) return 'hgf_' + hgf[1];
   return '';
 }
@@ -30,10 +30,12 @@ export function isEyny() {
 
 export function debounce(fn, ms) {
   let timer;
-  return (...args) => {
+  const debounced = (...args) => {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), ms);
   };
+  debounced.cancel = () => clearTimeout(timer);
+  return debounced;
 }
 
 export function isoDateOnly(iso) {

@@ -1,0 +1,54 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync version from tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          npm version "$TAG" --no-git-tag-version --allow-same-version
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify output
+        run: |
+          head -5 dist/eyny-tracker.user.js
+          echo "---"
+          wc -l dist/eyny-tracker.user.js
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/eyny-tracker.user.js
+          generate_release_notes: true
+          body: |
+            ## 安裝方式
+
+            1. 安裝 [Violentmonkey](https://violentmonkey.github.io/) 瀏覽器擴充
+            2. 點擊下方連結安裝 userscript：
+
+            **[📥 安裝 eyny-tracker.user.js](https://github.com/ChArLiiZ/EYNY-Tracker/releases/download/${{ github.ref_name }}/eyny-tracker.user.js)**
+
+            ---
+            _已安裝的使用者會透過 `@updateURL` 自動檢查更新。_

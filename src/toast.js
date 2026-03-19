@@ -1,6 +1,7 @@
 import { TOAST_CONTAINER_ID } from './constants.js';
 
 let container = null;
+const MAX_TOASTS = 5;
 
 function getContainer() {
   if (!container || !document.getElementById(TOAST_CONTAINER_ID)) {
@@ -12,6 +13,14 @@ function getContainer() {
 }
 
 export function showToast(message, type = 'info', duration = 3000, action = null) {
+  const c = getContainer();
+
+  // Limit max visible toasts — remove oldest when exceeding limit
+  while (c.children.length >= MAX_TOASTS) {
+    const oldest = c.firstElementChild;
+    if (oldest) oldest.remove();
+  }
+
   const toast = document.createElement('div');
   toast.className = `kuro-toast kuro-toast-${type}`;
 
@@ -32,7 +41,7 @@ export function showToast(message, type = 'info', duration = 3000, action = null
     toast.appendChild(btn);
   }
 
-  getContainer().appendChild(toast);
+  c.appendChild(toast);
   requestAnimationFrame(() => {
     requestAnimationFrame(() => toast.classList.add('show'));
   });

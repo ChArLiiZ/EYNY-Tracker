@@ -109,6 +109,7 @@ export async function syncPush(silent = false) {
     console.error('[EYNY Tracker] Sync push failed:', err);
     updateSyncStatus('error');
     if (!silent) showToast('同步上傳失敗：' + err.message, 'error');
+    throw err; // Re-throw so callers (syncFull) can handle
   } finally {
     syncInProgress = false;
   }
@@ -158,6 +159,7 @@ export async function syncPull(silent = false) {
     console.error('[EYNY Tracker] Sync pull failed:', err);
     updateSyncStatus('error');
     if (!silent) showToast('同步下載失敗：' + err.message, 'error');
+    throw err; // Re-throw so callers (syncFull) can handle
   } finally {
     syncInProgress = false;
   }
@@ -166,8 +168,20 @@ export async function syncPull(silent = false) {
 // ── Full sync: pull then push ───────────────────────────
 
 export async function syncFull(silent = false) {
-  await syncPull(true);
-  await syncPush(true);
+  try {
+    await syncPull(true);
+  } catch (err) {
+    console.error('[EYNY Tracker] Sync pull failed during full sync:', err);
+    if (!silent) showToast('同步下載階段失敗，已中止：' + err.message, 'error');
+    return;
+  }
+  try {
+    await syncPush(true);
+  } catch (err) {
+    console.error('[EYNY Tracker] Sync push failed during full sync:', err);
+    if (!silent) showToast('同步上傳階段失敗：' + err.message, 'error');
+    return;
+  }
   if (!silent) showToast('雙向同步完成', 'success');
 }
 
@@ -246,6 +260,7 @@ export function showSyncSettings() {
   const overlay = document.createElement('div');
   overlay.className = 'kuro-sync-dialog';
 
+  // Build dialog content with DOM API to avoid XSS from stored config values
   overlay.innerHTML = `
     <div class="kuro-sync-dialog-content">
       <h3>GitHub Gist 雲端同步設定</h3>
@@ -259,7 +274,7 @@ export function showSyncSettings() {
             <li>Token name 填 <code>EYNY Tracker</code></li>
             <li>Expiration 選你想要的期限</li>
             <li>Repository access 選 <strong>Public Repositories (read-only)</strong></li>
-            <li>Permissions 區塊 > Account permissions > <strong>Gists</strong> 設為 <strong>Read and write</strong></li>
+            <li>Permissions 區塊 &gt; Account permissions &gt; <strong>Gists</strong> 設為 <strong>Read and write</strong></li>
             <li>點 Generate token，複製 token</li>
           </ol>
         </details>
@@ -267,21 +282,32 @@ export function showSyncSettings() {
       <label class="kuro-sync-label">
         GitHub Token
         <input type="password" class="kuro-sync-input kuro-sync-token"
-               value="${cfg.token || ''}" placeholder="github_pat_xxxxx 或 ghp_xxxxx">
+               placeholder="github_pat_xxxxx 或 ghp_xxxxx">
       </label>
       <label class="kuro-sync-label">
         Gist ID <span class="kuro-mini">（留空將自動建立新 Gist）</span>
         <input type="text" class="kuro-sync-input kuro-sync-gist-id"
-               value="${cfg.gistId || ''}" placeholder="留空自動建立">
+               placeholder="留空自動建立">
       </label>
       <label class="kuro-sync-label kuro-sync-checkbox-label">
-        <input type="checkbox" class="kuro-sync-auto" ${cfg.autoSync ? 'checked' : ''}>
+        <input type="checkbox" class="kuro-sync-auto">
         自動上傳（每次修改後自動上傳到 Gist，下載需手動點「立即同步」）
       </label>
-      ${cfg.lastSync ? `<div class="kuro-mini" style="margin-top:4px">上次同步：${cfg.lastSync}</div>` : ''}
+      <div class="kuro-sync-last-sync"></div>
       <div class="kuro-sync-dialog-actions"></div>
     </div>
   `;
+
+  // Set values safely via DOM properties (not innerHTML) to prevent XSS
+  overlay.querySelector('.kuro-sync-token').value = cfg.token || '';
+  overlay.querySelector('.kuro-sync-gist-id').value = cfg.gistId || '';
+  overlay.querySelector('.kuro-sync-auto').checked = !!cfg.autoSync;
+  if (cfg.lastSync) {
+    const lastSyncEl = overlay.querySelector('.kuro-sync-last-sync');
+    lastSyncEl.className = 'kuro-mini';
+    lastSyncEl.style.marginTop = '4px';
+    lastSyncEl.textContent = '上次同步：' + cfg.lastSync;
+  }
 
   const actions = overlay.querySelector('.kuro-sync-dialog-actions');
 
