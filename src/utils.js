@@ -14,8 +14,8 @@ export function extractThreadId(url) {
   // EYNY: thread-12345-1-1.html or ?tid=12345
   const eyny = s.match(/thread-(\d+)-/) || s.match(/[?&]tid=(\d+)/);
   if (eyny) return eyny[1];
-  // hgamefree: /post-slug/12345.html (must have a path segment before the ID)
-  const hgf = s.match(/hgamefree\.info\/[^/]+\/(\d+)\.html/);
+  // hgamefree: /any-path/12345.html (one or more path segments before the ID)
+  const hgf = s.match(/hgamefree\.info\/.+\/(\d+)\.html/);
   if (hgf) return 'hgf_' + hgf[1];
   return '';
 }
