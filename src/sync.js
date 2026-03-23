@@ -8,6 +8,17 @@ import { debounce } from './utils.js';
 const GIST_FILENAME = 'eyny-tracker-data.json';
 let syncInProgress = false;
 let refreshUICallback = null;
+let lastPushedHash = '';
+
+// Simple fast hash (FNV-1a 32-bit) to detect changes without storing full JSON
+function fnv1aHash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (h * 0x01000193) >>> 0;
+  }
+  return h.toString(36);
+}
 
 export function setSyncRefreshUI(fn) {
   refreshUICallback = fn;
@@ -75,7 +86,7 @@ export async function createGist(token) {
     public: false,
     files: {
       [GIST_FILENAME]: {
-        content: JSON.stringify(db, null, 2) || '{}',
+        content: JSON.stringify(db) || '{}',
       },
     },
   };
@@ -91,16 +102,24 @@ export async function syncPush(silent = false) {
   const cfg = getSyncConfig();
 
   syncInProgress = true;
-  updateSyncStatus('uploading');
   try {
     const db = getDB();
+    const json = JSON.stringify(db) || '{}';
+    const hash = fnv1aHash(json);
+
+    // Skip push if content hasn't changed since last push
+    if (hash === lastPushedHash && silent) {
+      syncInProgress = false;
+      return;
+    }
+
+    updateSyncStatus('uploading');
     await ghRequest('PATCH', `https://api.github.com/gists/${cfg.gistId}`, cfg.token, {
       files: {
-        [GIST_FILENAME]: {
-          content: JSON.stringify(db, null, 2) || '{}',
-        },
+        [GIST_FILENAME]: { content: json },
       },
     });
+    lastPushedHash = hash;
     cfg.lastSync = new Date().toISOString();
     saveSyncConfig(cfg);
     updateSyncStatus('success');
@@ -144,6 +163,9 @@ export async function syncPull(silent = false) {
     const { merged, stats } = mergeDB(localDB, remoteDB);
     setDB(merged);
     saveDB();
+
+    // Invalidate push hash so next push sends the merged data
+    lastPushedHash = '';
 
     cfg.lastSync = new Date().toISOString();
     saveSyncConfig(cfg);
